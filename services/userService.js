@@ -2,8 +2,19 @@
 const pool = require('../config/db');
 
 // Ambil semua user
-const getAllUsers = async () => {
-  const result = await pool.query('SELECT * FROM users');
+const getAllUsers = async (search) => {
+  let query = 'SELECT id, username, full_name, avatar_url, bio FROM users';
+  let params = [];
+
+  if (search) {
+    // Cari yang username-nya MIRIP -ATAU- nama lengkapnya MIRIP search
+    query += ` WHERE username ILIKE $1 OR full_name ILIKE $1`;
+    params.push(`%${search}%`);
+  }
+
+  query += ` ORDER BY username ASC`;
+
+  const result = await pool.query(query, params);
   return result.rows;
 };
 

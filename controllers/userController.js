@@ -3,7 +3,8 @@ const userService = require('../services/userService');
 
 const getUsers = async (req, res) => {
   try {
-    const users = await userService.getAllUsers();
+    const { search } = req.query; // Ambil search dari URL
+    const users = await userService.getAllUsers(search);
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: err.message });
