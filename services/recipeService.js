@@ -15,18 +15,18 @@ const getAllRecipes = async (queryParam) => {
   
   let params = [];
   
-  // LOGIKA SEARCH (Judul)
+  // --- UPGRADE BAGIAN INI ---
   if (search) {
-    query += ` WHERE recipes.title ILIKE $1`; 
+    // Cari di JUDUL -ATAU- di DESKRIPSI (buat hashtag)
+    query += ` WHERE recipes.title ILIKE $1 OR recipes.description ILIKE $1`; 
     params.push(`%${search}%`);
   }
+  // --------------------------
 
   // LOGIKA SORTING (Trending / Terbaru)
   if (sort === 'trending') {
-    // Urutkan dari like terbanyak, lalu comment terbanyak
     query += ` ORDER BY like_count DESC, comment_count DESC LIMIT 5`;
   } else {
-    // Default: Terbaru
     query += ` ORDER BY recipes.created_at DESC`;
   }
 
