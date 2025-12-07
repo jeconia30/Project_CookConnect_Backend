@@ -31,12 +31,8 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
       );
     }
 
-    // Sorting
-    if (sort === 'trending') {
-      query = query.order('created_at', { ascending: false });
-      // Bisa improve dengan sorting by likes count
-    } else {
-      query = query.order('created_at', { ascending: false });
+    if (sort !== 'trending') {
+       query = query.order('created_at', { ascending: false });
     }
 
     const { data, error } = await query.limit(50);
@@ -44,7 +40,7 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
     if (error) throw error;
 
     // Format response
-    return (data || []).map(recipe => {
+    let formattedData = (data || []).map(recipe => {
       const likes = recipe.likes?.[0]?.count || 0;
       const comments = recipe.comments?.[0]?.count || 0;
 
@@ -53,7 +49,7 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
         title: recipe.title,
         description: recipe.description,
         image_url: recipe.image_url,
-        image: recipe.image_url, // Alias untuk frontend
+        image: recipe.image_url, 
         total_time: recipe.total_time,
         servings: recipe.servings,
         difficulty: recipe.difficulty,
@@ -64,12 +60,19 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
         avatar_url: recipe.users?.avatar_url,
         avatar: recipe.users?.avatar_url,
         like_count: likes,
-        likes,
+        likes, // Field ini dipakai untuk sorting
         comment_count: comments,
         comments,
         saves: recipe.saves?.[0]?.count || 0,
       };
     });
+
+    // ✅ LOGIKA SORTING TRENDING (BY LIKES)
+    if (sort === 'trending') {
+      formattedData.sort((a, b) => b.likes - a.likes);
+    }
+
+    return formattedData;
   } catch (error) {
     throw error;
   }
