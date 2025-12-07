@@ -1,42 +1,32 @@
-// app.js
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const pool = require('./config/db'); // Import koneksi db buat tes
 
 const app = express();
 const port = 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true
+}));
 app.use(express.json());
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// --- IMPORT ROUTES (Nanti kita aktifkan satu per satu) ---
+// Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const recipeRoutes = require('./routes/recipeRoutes');
-const commentRoutes = require('./routes/commentRoutes');
-const interactionRoutes = require('./routes/interactionRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-
-// --- GUNAKAN ROUTES ---
-app.get('/', (req, res) => {
-  res.send('Server MVC CookConnect Siap! 👨‍🍳');
-});
+const uploadRoutes = require('./routes/uploadRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/recipes', recipeRoutes);
-app.use('/api/comments', commentRoutes);
-app.use('/api/interactions', require('./routes/interactionRoutes'));
-app.use('/api/notifications', notificationRoutes);
+app.use('/api/upload', uploadRoutes); // TAMBAH INI
 
-// Jalankan Server
+app.get('/', (req, res) => {
+  res.send('✅ CookConnect Backend Aktif!');
+});
+
 app.listen(port, () => {
-  console.log(`🚀 Server MVC jalan di http://localhost:${port}`);
-  
-  // Tes koneksi db sebentar
-  pool.query('SELECT NOW()', (err) => {
-    if (err) console.error('❌ DB Gagal:', err.message);
-    else console.log('✅ DB Konek!');
-  });
+  console.log(`🚀 Server jalan di http://localhost:${port}`);
 });

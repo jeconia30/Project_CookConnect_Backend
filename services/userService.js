@@ -1,47 +1,101 @@
-// services/userService.js
-const pool = require('../config/db');
+const { supabase } = require('../config/supabaseClient');
 
-// Ambil semua user
-const getAllUsers = async (search) => {
-  let query = 'SELECT id, username, full_name, avatar_url, bio FROM users';
-  let params = [];
+const getUserProfile = async (username) => {
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select(`
+        id,
+        username,
+        full_name,
+        bio,
+        avatar_url,
+        link_tiktok,
+        link_instagram,
+        recipes:recipes(count),
+        followers:follows!following_id(count),
+        following:follows!follower_id(count)
+      `)
+      .eq('username', username)
+      .single();
 
-  if (search) {
-    // Cari yang username-nya MIRIP -ATAU- nama lengkapnya MIRIP search
-    query += ` WHERE username ILIKE $1 OR full_name ILIKE $1`;
-    params.push(`%${search}%`);
+    if (error) throw error;
+
+    return {
+      ...user,
+      follower_count: user.followers?.[0]?.count || 0,
+      following_count: user.following?.[0]?.count || 0,
+      recipe_count: user.recipes?.[0]?.count || 0,
+    };
+  } catch (error) {
+    throw error;
   }
-
-  query += ` ORDER BY username ASC`;
-
-  const result = await pool.query(query, params);
-  return result.rows;
 };
 
-// UPDATE USER (Versi Lengkap dengan Avatar)
-const updateUser = async (id, data) => {
-  // Tambahkan avatar_url disini
-  const { full_name, bio, link_tiktok, link_instagram, avatar_url } = data; 
-  
-  const query = `
-    UPDATE users 
-    SET full_name = $1, bio = $2, link_tiktok = $3, link_instagram = $4, avatar_url = $5
-    WHERE id = $6
-    RETURNING *
-  `;
-  
-  // Masukkan avatar_url ke urutan $5, dan id ke $6
-  const values = [full_name, bio, link_tiktok, link_instagram, avatar_url, id];
+const updateUserProfile = async (userId, updateData) => {
+  try {
+    const { data: updated, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', userId)
+      .select()
+      .single();
 
-  const result = await pool.query(query, values);
-  return result.rows[0];
+    if (error) throw error;
+
+    return updated;
+  } catch (error) {
+    throw error;
+  }
 };
 
-// Delete user
-const deleteUser = async (id) => {
-  const query = 'DELETE FROM users WHERE id = $1 RETURNING *';
-  const result = await pool.query(query, [id]);
-  return result.rows[0];
+const getMyRecipes = async (userId) => {
+  try {
+    const { data: recipes, error } = await supabase
+      .from('recipes')
+      .select(`
+        id,
+        title,
+        image_url,
+        created_at
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return recipes;
+  } catch (error) {
+    throw error;
+  }
 };
 
-module.exports = { getAllUsers, updateUser, deleteUser };
+const getMySavedRecipes = async (userId) => {
+  try {
+    const { data: savedRecipes, error } = await supabase
+      .from('saves')
+      .select(`
+        recipes (
+          id,
+          title,
+          image_url,
+          created_at
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return savedRecipes.map(save => save.recipes);
+  } catch (error) {
+    throw error;
+  }
+};
+
+module.exports = {
+  getUserProfile,
+  updateUserProfile,
+  getMyRecipes,
+  getMySavedRecipes,
+};
