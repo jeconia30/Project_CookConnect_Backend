@@ -1,123 +1,183 @@
-// services/recipeService.js
-const pool = require('../config/db');
+const { supabase, supabaseAdmin } = require('../config/supabaseClient');
 
-// --- 1. GET ALL RECIPES (Bisa Search & Trending) ---
 const getAllRecipes = async (queryParam) => {
   const { search, sort } = queryParam || {};
-  
-  let query = `
-    SELECT recipes.*, users.username, users.avatar_url,
-    (SELECT COUNT(*) FROM likes WHERE likes.recipe_id = recipes.id)::int as like_count,
-    (SELECT COUNT(*) FROM comments WHERE comments.recipe_id = recipes.id)::int as comment_count
-    FROM recipes 
-    JOIN users ON recipes.user_id = users.id
-  `;
-  
-  let params = [];
-  
-  // --- UPGRADE BAGIAN INI ---
-  if (search) {
-    // Cari di JUDUL -ATAU- di DESKRIPSI (buat hashtag)
-    query += ` WHERE recipes.title ILIKE $1 OR recipes.description ILIKE $1`; 
-    params.push(`%${search}%`);
-  }
-  // --------------------------
 
-  // LOGIKA SORTING (Trending / Terbaru)
-  if (sort === 'trending') {
-    query += ` ORDER BY like_count DESC, comment_count DESC LIMIT 5`;
-  } else {
-    query += ` ORDER BY recipes.created_at DESC`;
-  }
-
-  const result = await pool.query(query, params);
-  return result.rows;
-};
-
-// --- 2. UPLOAD RESEP KOMPLEKS (Transaction) ---
-const createRecipe = async (data) => {
-  const client = await pool.connect(); // Pakai client buat Transaction
-  
   try {
-    await client.query('BEGIN'); // Mulai
+    let query = supabase
+      .from('recipes')
+      .select(`
+        id,
+        title,
+        description,
+        image_url,
+        total_time,
+        servings,
+        difficulty,
+        created_at,
+        users:user_id (username, avatar_url),
+        likes:likes(count),
+        comments:comments(count)
+      `);
 
-    const { 
-      title, description, image_url, total_time, servings, difficulty, user_id,
-      ingredients, steps // <-- Ini Array dari Frontend
-    } = data;
-
-    // A. Simpan Data Utama
-    const recipeQuery = `
-      INSERT INTO recipes (title, description, image_url, total_time, servings, difficulty, user_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `;
-    const recipeRes = await client.query(recipeQuery, [title, description, image_url, total_time, servings, difficulty, user_id]);
-    const newRecipe = recipeRes.rows[0];
-
-    // B. Simpan Bahan-bahan (Looping)
-    if (ingredients && ingredients.length > 0) {
-      for (const item of ingredients) {
-        // Pastikan item tidak kosong
-        if(item.trim()) {
-           await client.query(
-            'INSERT INTO recipe_ingredients (recipe_id, item) VALUES ($1, $2)',
-            [newRecipe.id, item]
-          );
-        }
-      }
+    // Filter search
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
     }
 
-    // C. Simpan Langkah-langkah (Looping)
-    if (steps && steps.length > 0) {
-      let stepNum = 1;
-      for (const instruction of steps) {
-        if(instruction.trim()) {
-          await client.query(
-            'INSERT INTO recipe_steps (recipe_id, step_number, instruction) VALUES ($1, $2, $3)',
-            [newRecipe.id, stepNum, instruction]
-          );
-          stepNum++;
-        }
-      }
+    // Sorting
+    if (sort === 'trending') {
+      query = query.order('likes', { count: 'desc' }).limit(5);
+    } else {
+      query = query.order('created_at', { ascending: false });
     }
 
-    await client.query('COMMIT'); // Simpan permanen
-    return newRecipe;
+    const { data, error } = await query;
 
-  } catch (e) {
-    await client.query('ROLLBACK'); // Batalkan semua kalau error
-    throw e;
-  } finally {
-    client.release();
+    if (error) throw error;
+
+    // Format response
+    return data.map(recipe => ({
+      ...recipe,
+      author: recipe.users?.username || 'Anonymous',
+      avatar_url: recipe.users?.avatar_url,
+      like_count: recipe.likes?.[0]?.count || 0,
+      comment_count: recipe.comments?.[0]?.count || 0,
+    }));
+  } catch (error) {
+    throw error;
   }
 };
 
-// --- 3. GET DETAIL RESEP (Lengkap dengan Bahan & Langkah) ---
-const getRecipeById = async (id) => {
-  // Info Utama + Hitung Like/Komen
-  const recipeQuery = `
-    SELECT recipes.*, users.username, users.avatar_url,
-    (SELECT COUNT(*) FROM likes WHERE likes.recipe_id = recipes.id)::int as like_count,
-    (SELECT COUNT(*) FROM comments WHERE comments.recipe_id = recipes.id)::int as comment_count
-    FROM recipes 
-    JOIN users ON recipes.user_id = users.id
-    WHERE recipes.id = $1
-  `;
-  const recipeRes = await pool.query(recipeQuery, [id]);
-  
-  if (recipeRes.rows.length === 0) return null;
-  const recipe = recipeRes.rows[0];
+const getRecipeById = async (id, userId = null) => {
+  try {
+    const { data: recipe, error } = await supabase
+      .from('recipes')
+      .select(`
+        *,
+        users:user_id (id, username, avatar_url, bio),
+        recipe_ingredients (item),
+        recipe_steps (step_number, instruction),
+        likes:likes(count),
+        comments:comments(count)
+      `)
+      .eq('id', id)
+      .single();
 
-  // Ambil Bahan
-  const ingRes = await pool.query('SELECT item FROM recipe_ingredients WHERE recipe_id = $1 ORDER BY id ASC', [id]);
-  recipe.ingredients = ingRes.rows.map(r => r.item); // Ubah jadi array string biasa
+    if (error) throw error;
 
-  // Ambil Langkah
-  const stepRes = await pool.query('SELECT instruction FROM recipe_steps WHERE recipe_id = $1 ORDER BY step_number ASC', [id]);
-  recipe.steps = stepRes.rows.map(r => r.instruction);
+    // Cek apakah user sudah like/save (jika login)
+    let isLiked = false;
+    let isSaved = false;
 
-  return recipe;
+    if (userId) {
+      const { data: likeCheck } = await supabase
+        .from('likes')
+        .select('id')
+        .eq('recipe_id', id)
+        .eq('user_id', userId)
+        .single();
+
+      const { data: saveCheck } = await supabase
+        .from('saves')
+        .select('id')
+        .eq('recipe_id', id)
+        .eq('user_id', userId)
+        .single();
+
+      isLiked = !!likeCheck;
+      isSaved = !!saveCheck;
+    }
+
+    return {
+      ...recipe,
+      author: recipe.users?.username,
+      user_fullname: recipe.users?.username,
+      avatar_url: recipe.users?.avatar_url,
+      bio: recipe.users?.bio,
+      ingredients: recipe.recipe_ingredients.map(r => r.item),
+      steps: recipe.recipe_steps
+        .sort((a, b) => a.step_number - b.step_number)
+        .map(r => r.instruction),
+      like_count: recipe.likes?.[0]?.count || 0,
+      comment_count: recipe.comments?.[0]?.count || 0,
+      is_liked: isLiked,
+      is_saved: isSaved,
+    };
+  } catch (error) {
+    throw error;
+  }
 };
 
-module.exports = { getAllRecipes, createRecipe, getRecipeById };
+const createRecipe = async (data, userId) => {
+  const {
+    title,
+    description,
+    image_url,
+    total_time,
+    servings,
+    difficulty,
+    ingredients,
+    steps,
+  } = data;
+
+  try {
+    // 1. Insert recipe utama
+    const { data: newRecipe, error: recipeError } = await supabase
+      .from('recipes')
+      .insert([
+        {
+          user_id: userId,
+          title,
+          description,
+          image_url,
+          total_time: parseInt(total_time),
+          servings: parseInt(servings),
+          difficulty,
+        },
+      ])
+      .select()
+      .single();
+
+    if (recipeError) throw recipeError;
+
+    // 2. Insert ingredients
+    if (ingredients && ingredients.length > 0) {
+      const ingredientRecords = ingredients
+        .filter(item => item.trim())
+        .map(item => ({
+          recipe_id: newRecipe.id,
+          item,
+        }));
+
+      const { error: ingError } = await supabase
+        .from('recipe_ingredients')
+        .insert(ingredientRecords);
+
+      if (ingError) throw ingError;
+    }
+
+    // 3. Insert steps
+    if (steps && steps.length > 0) {
+      const stepRecords = steps
+        .filter(step => step.trim())
+        .map((step, index) => ({
+          recipe_id: newRecipe.id,
+          step_number: index + 1,
+          instruction: step,
+        }));
+
+      const { error: stepError } = await supabase
+        .from('recipe_steps')
+        .insert(stepRecords);
+
+      if (stepError) throw stepError;
+    }
+
+    return newRecipe;
+  } catch (error) {
+    throw error;
+  }
+};
+
+module.exports = { getAllRecipes, getRecipeById, createRecipe };

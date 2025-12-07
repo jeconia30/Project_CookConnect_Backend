@@ -1,78 +1,82 @@
-const pool = require("../config/db");
-const notifService = require("./notificationService");
+const { supabase } = require('../config/supabaseClient');
+const notifService = require('./notificationService');
 
-// --- LIKE ---
-const likeRecipe = async (userId, recipeId) => {
-  // Cek dulu udah like belum?
-  const check = await pool.query(
-    "SELECT * FROM likes WHERE user_id = $1 AND recipe_id = $2",
-    [userId, recipeId]
-  );
+const toggleLike = async (userId, recipeId) => {
+  try {
+    // Cek sudah like?
+    const { data: existingLike } = await supabase
+      .from('likes')
+      .select('id')
+      .eq('recipe_id', recipeId)
+      .eq('user_id', userId)
+      .single();
 
-  if (check.rows.length > 0) {
-    // Kalau udah like, berarti UNLIKE (Hapus)
-    await pool.query(
-      "DELETE FROM likes WHERE user_id = $1 AND recipe_id = $2",
-      [userId, recipeId]
-    );
-    return { status: "unliked" };
-  } else {
-    // Kalau belum, berarti LIKE (Insert)
-    await pool.query("INSERT INTO likes (user_id, recipe_id) VALUES ($1, $2)", [
-      userId,
-      recipeId,
-    ]);
-    // --- TAMBAHAN NOTIF ---
-    // Cari tau pemilik resep siapa?
-    const recipe = await pool.query(
-      "SELECT user_id, title FROM recipes WHERE id = $1",
-      [recipeId]
-    );
-    const ownerId = recipe.rows[0].user_id;
+    if (existingLike) {
+      // Hapus like
+      await supabase
+        .from('likes')
+        .delete()
+        .eq('recipe_id', recipeId)
+        .eq('user_id', userId);
 
-    await notifService.createNotification(
-      ownerId,
-      userId,
-      "like",
-      `menyukai resep ${recipe.rows[0].title}`,
-      recipeId
-    );
-    // ----------------------
+      return { status: 'unliked' };
+    } else {
+      // Tambah like
+      await supabase
+        .from('likes')
+        .insert([{ recipe_id: recipeId, user_id: userId }]);
 
-    return { status: "liked" };
+      // Buat notifikasi
+      const { data: recipe } = await supabase
+        .from('recipes')
+        .select('user_id, title')
+        .eq('id', recipeId)
+        .single();
+
+      if (recipe.user_id !== userId) {
+        await notifService.createNotification(
+          recipe.user_id,
+          userId,
+          'like',
+          `menyukai resep ${recipe.title}`,
+          recipeId
+        );
+      }
+
+      return { status: 'liked' };
+    }
+  } catch (error) {
+    throw error;
   }
 };
 
-// Hitung jumlah like di satu resep
-const getLikeCount = async (recipeId) => {
-  const result = await pool.query(
-    "SELECT COUNT(*) FROM likes WHERE recipe_id = $1",
-    [recipeId]
-  );
-  return result.rows[0].count;
-};
+const toggleSave = async (userId, recipeId) => {
+  try {
+    const { data: existingSave } = await supabase
+      .from('saves')
+      .select('id')
+      .eq('recipe_id', recipeId)
+      .eq('user_id', userId)
+      .single();
 
-// --- SAVE / BOOKMARK ---
-const saveRecipe = async (userId, recipeId) => {
-  // Logika sama: Toggle Save/Unsave
-  const check = await pool.query(
-    "SELECT * FROM saves WHERE user_id = $1 AND recipe_id = $2",
-    [userId, recipeId]
-  );
+    if (existingSave) {
+      await supabase
+        .from('saves')
+        .delete()
+        .eq('recipe_id', recipeId)
+        .eq('user_id', userId);
 
-  if (check.rows.length > 0) {
-    await pool.query(
-      "DELETE FROM saves WHERE user_id = $1 AND recipe_id = $2",
-      [userId, recipeId]
-    );
-    return { status: "unsaved" };
-  } else {
-    await pool.query("INSERT INTO saves (user_id, recipe_id) VALUES ($1, $2)", [
-      userId,
-      recipeId,
-    ]);
-    return { status: "saved" };
+      return { status: 'unsaved' };
+    } else {
+      await supabase
+        .from('saves')
+        .insert([{ recipe_id: recipeId, user_id: userId }]);
+
+      return { status: 'saved' };
+    }
+  } catch (error) {
+    throw error;
   }
 };
 
-module.exports = { likeRecipe, getLikeCount, saveRecipe };
+module.exports = { toggleLike, toggleSave };
