@@ -1,79 +1,100 @@
 const recipeService = require('../services/recipeService');
+const { successResponse, errorResponse, validationErrorResponse } = require('../utils/responseFormatter');
+const { validateCreateRecipeInput } = require('../utils/validator');
 
-// GET /api/recipes
+// GET /api/recipes -> Ambil semua resep (FIXED)
 const getRecipes = async (req, res) => {
   try {
     const { search, sort } = req.query;
-    const userId = req.headers.authorization ? 
-      JSON.parse(Buffer.from(req.headers.authorization.split('.')[1], 'base64')).id 
-      : null;
+    const userId = req.user?.id || null;
 
     const recipes = await recipeService.getAllRecipes(
       { search, sort },
       userId
     );
 
-    res.json(recipes);
+    return successResponse(res, {
+      count: recipes.length,
+      recipes,
+    }, 'Resep berhasil diambil');
   } catch (err) {
     console.error('Get Recipes Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal mengambil resep', 500);
   }
 };
 
-// GET /api/recipes/search
+// GET /api/recipes/search?q=ayam -> Search resep (FIXED)
 const searchRecipes = async (req, res) => {
   try {
     const { q } = req.query;
 
+    // VALIDASI
     if (!q || q.trim() === '') {
-      return res.status(400).json({ 
-        error: 'Query parameter "q" harus diisi',
-        recipes: []
-      });
+      return errorResponse(res, 'Query pencarian tidak boleh kosong', 400);
     }
 
-    const recipes = await recipeService.searchRecipes(q);
-    res.json({ recipes });
+    // Cek panjang minimal
+    if (q.trim().length < 2) {
+      return errorResponse(res, 'Minimal 2 karakter untuk pencarian', 400);
+    }
+
+    const recipes = await recipeService.searchRecipes(q.trim());
+
+    return successResponse(res, {
+      query: q,
+      count: recipes.length,
+      recipes,
+    }, 'Pencarian resep berhasil');
   } catch (err) {
     console.error('Search Recipes Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal mencari resep', 500);
   }
 };
 
-// GET /api/recipes/:id
+// GET /api/recipes/:id -> Ambil detail resep (FIXED)
 const getRecipeDetail = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user?.id || null;
 
-    if (!id) {
-      return res.status(400).json({ error: 'Recipe ID harus diisi' });
+    // VALIDASI
+    if (!id || id.trim() === '') {
+      return errorResponse(res, 'ID resep diperlukan', 400);
     }
 
     const recipe = await recipeService.getRecipeById(id, userId);
 
     if (!recipe) {
-      return res.status(404).json({ error: 'Resep tidak ditemukan' });
+      return errorResponse(res, 'Resep tidak ditemukan', 404);
     }
 
-    res.json(recipe);
+    return successResponse(res, recipe, 'Detail resep berhasil diambil');
   } catch (err) {
     console.error('Get Recipe Detail Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal mengambil detail resep', 500);
   }
 };
 
-// POST /api/recipes
+// POST /api/recipes -> Upload resep baru (FIXED)
 const addRecipe = async (req, res) => {
   try {
     const userId = req.user.id;
     const { title, description, image_url, total_time, servings, difficulty, ingredients, steps } = req.body;
 
-    if (!title || !userId) {
-      return res.status(400).json({ 
-        error: 'Judul dan User ID wajib diisi',
-        required: ['title', 'description', 'image_url', 'total_time', 'servings', 'difficulty', 'ingredients', 'steps']
-      });
+    // VALIDASI INPUT
+    const validationErrors = validateCreateRecipeInput({
+      title,
+      description,
+      image_url,
+      total_time,
+      servings,
+      difficulty,
+      ingredients: ingredients || [],
+      steps: steps || [],
+    });
+
+    if (validationErrors) {
+      return validationErrorResponse(res, validationErrors);
     }
 
     const newRecipe = await recipeService.createRecipe({
@@ -88,105 +109,113 @@ const addRecipe = async (req, res) => {
       steps,
     });
 
-    res.status(201).json({
-      message: 'Resep berhasil diupload!',
-      data: newRecipe,
-    });
+    return successResponse(
+      res,
+      newRecipe,
+      'Resep berhasil diterbitkan!',
+      201
+    );
   } catch (err) {
     console.error('Add Recipe Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal menerbitkan resep', 500);
   }
 };
 
-// POST /api/recipes/:id/like
+// POST /api/recipes/:id/like -> Like resep (FIXED)
 const likeRecipe = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id) {
-      return res.status(400).json({ error: 'Recipe ID harus diisi' });
+    if (!id || id.trim() === '') {
+      return errorResponse(res, 'ID resep diperlukan', 400);
     }
 
     const result = await recipeService.toggleLike(userId, id, true);
-    res.json(result);
+
+    return successResponse(res, result, 'Resep berhasil di-like');
   } catch (err) {
     console.error('Like Recipe Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal like resep', 500);
   }
 };
 
-// POST /api/recipes/:id/unlike
+// POST /api/recipes/:id/unlike -> Unlike resep (FIXED)
 const unlikeRecipe = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id) {
-      return res.status(400).json({ error: 'Recipe ID harus diisi' });
+    if (!id || id.trim() === '') {
+      return errorResponse(res, 'ID resep diperlukan', 400);
     }
 
     const result = await recipeService.toggleLike(userId, id, false);
-    res.json(result);
+
+    return successResponse(res, result, 'Resep berhasil di-unlike');
   } catch (err) {
     console.error('Unlike Recipe Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal unlike resep', 500);
   }
 };
 
-// POST /api/recipes/:id/save
+// POST /api/recipes/:id/save -> Save resep (FIXED)
 const saveRecipe = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id) {
-      return res.status(400).json({ error: 'Recipe ID harus diisi' });
+    if (!id || id.trim() === '') {
+      return errorResponse(res, 'ID resep diperlukan', 400);
     }
 
     const result = await recipeService.toggleSave(userId, id, true);
-    res.json(result);
+
+    return successResponse(res, result, 'Resep berhasil disimpan');
   } catch (err) {
     console.error('Save Recipe Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal menyimpan resep', 500);
   }
 };
 
-// POST /api/recipes/:id/unsave
+// POST /api/recipes/:id/unsave -> Unsave resep (FIXED)
 const unsaveRecipe = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id) {
-      return res.status(400).json({ error: 'Recipe ID harus diisi' });
+    if (!id || id.trim() === '') {
+      return errorResponse(res, 'ID resep diperlukan', 400);
     }
 
     const result = await recipeService.toggleSave(userId, id, false);
-    res.json(result);
+
+    return successResponse(res, result, 'Resep berhasil dihapus dari simpanan');
   } catch (err) {
     console.error('Unsave Recipe Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal menghapus simpanan resep', 500);
   }
 };
 
-// GET /api/recipes/user/:userId
+// GET /api/recipes/user/:userId -> Ambil resep user tertentu (FIXED)
 const getUserRecipes = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID harus diisi' });
+    if (!userId || userId.trim() === '') {
+      return errorResponse(res, 'ID user diperlukan', 400);
     }
 
     const recipes = await recipeService.getRecipesByUserId(userId);
-    res.json({
+
+    return successResponse(res, {
+      userId,
       count: recipes.length,
       recipes,
-    });
+    }, 'Resep user berhasil diambil');
   } catch (err) {
     console.error('Get User Recipes Error:', err);
-    res.status(500).json({ error: err.message });
+    return errorResponse(res, 'Gagal mengambil resep user', 500);
   }
 };
 
