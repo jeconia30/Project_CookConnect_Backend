@@ -1,41 +1,95 @@
-// controllers/authController.js
-const authService = require('../services/authService');
+const authService = require("../services/authService");
+const { successResponse, errorResponse, validationErrorResponse } = require("../utils/responseFormatter");
+const { validateRegisterInput, validateLoginInput } = require("../utils/validator");
 
 const register = async (req, res) => {
   try {
-    const newUser = await authService.registerUser(req.body);
-    
-    res.status(201).json({
-      message: "Register Berhasil! Silakan Login.",
-      user: newUser
+    const { full_name, email, username, password } = req.body;
+
+    // 1. VALIDASI INPUT
+    const validationErrors = validateRegisterInput({
+      full_name,
+      email,
+      username,
+      password,
     });
-  } catch (error) {
-    // Kalau errornya karena duplikat email
-    if (error.message === 'Username atau Email sudah terdaftar!') {
-      return res.status(400).json({ error: error.message });
+
+    if (validationErrors) {
+      return validationErrorResponse(res, validationErrors);
     }
-    // Error lain (server)
-    res.status(500).json({ error: error.message });
+
+    // 2. PANGGIL SERVICE
+    const result = await authService.registerUser({
+      full_name,
+      email,
+      username,
+      password,
+    });
+
+    // 3. RESPONSE SUKSES
+    return successResponse(
+      res,
+      {
+        token: result.token,
+        user: result.user_data,
+      },
+      "Registrasi berhasil! Silakan login.",
+      201
+    );
+  } catch (error) {
+    console.error("Register Error:", error);
+
+    // Handle duplicate email/username
+    if (error.message.includes("terdaftar")) {
+      return errorResponse(res, error.message, 400);
+    }
+
+    return errorResponse(res, "Gagal melakukan registrasi", 500);
   }
 };
 
 const login = async (req, res) => {
   try {
-    const user = await authService.login(req.body);
+    const { username_or_email, password } = req.body;
 
-    res.json({
-      message: "Login Berhasil! Selamat datang.",
-      user: {
-        id: user.id,
-        username: user.username,
-        full_name: user.full_name,
-        email: user.email,
-        avatar_url: user.avatar_url
-      }
+    // 1. VALIDASI INPUT
+    const validationErrors = validateLoginInput({
+      username_or_email,
+      password,
     });
+
+    if (validationErrors) {
+      return validationErrorResponse(res, validationErrors);
+    }
+
+    // 2. PANGGIL SERVICE
+    const result = await authService.login({
+      username_or_email,
+      password,
+    });
+
+    // 3. RESPONSE SUKSES
+    return successResponse(
+      res,
+      {
+        token: result.token,
+        user: result.user_data,
+      },
+      "Login berhasil! Selamat datang."
+    );
   } catch (error) {
-    // Balas error dengan status 401 (Unauthorized)
-    res.status(401).json({ error: error.message });
+    console.error("Login Error:", error);
+
+    // Handle specific errors
+    if (error.message.includes("tidak ditemukan")) {
+      return errorResponse(res, error.message, 401);
+    }
+
+    if (error.message.includes("salah")) {
+      return errorResponse(res, error.message, 401);
+    }
+
+    return errorResponse(res, "Gagal login", 500);
   }
 };
 

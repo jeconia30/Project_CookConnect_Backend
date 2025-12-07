@@ -7,7 +7,7 @@ const registerUser = async (userData) => {
 
   try {
     // 1. Cek user sudah ada?
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error } = await supabase
       .from('users')
       .select('id')
       .or(`username.eq.${username},email.eq.${email}`)
@@ -21,7 +21,7 @@ const registerUser = async (userData) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // 3. Insert user ke Supabase
-    const { data: newUser, error } = await supabaseAdmin
+    const { data: newUser } = await supabaseAdmin
       .from('users')
       .insert([
         {
