@@ -1,154 +1,131 @@
-const { supabase } = require('../config/supabaseClient');
+// ✅ PENTING: Ganti import menjadi supabaseAdmin
+const { supabaseAdmin } = require('../config/supabaseClient');
 
-// ✅ BARU: Ambil semua users dengan search
-const getAllUsers = async (search = null) => {
-  try {
-    let query = supabase
-      .from('users')
-      .select('id, username, full_name, bio, avatar_url, link_tiktok, link_instagram');
+// Helper: Hitung Followers & Following (Pakai Admin agar tidak kena RLS)
+const getUserCounts = async (userId) => {
+  console.log(`[DEBUG] Menghitung counts untuk UserID: ${userId}`);
 
-    // Filter search jika ada
-    if (search && search.trim() !== '') {
-      query = query.or(
-        `username.ilike.%${search}%,full_name.ilike.%${search}%`
-      );
-    }
+  // Hitung Followers
+  const resFollowers = await supabaseAdmin
+    .from('follows')
+    .select('*', { count: 'exact', head: true })
+    .eq('following_id', userId);
 
-    const { data, error } = await query.limit(20);
+  console.log(`[DEBUG] Hasil Followers: Count=${resFollowers.count}, Error=${resFollowers.error?.message}`);
 
-    if (error) throw error;
+  // Hitung Following
+  const resFollowing = await supabaseAdmin
+    .from('follows')
+    .select('*', { count: 'exact', head: true })
+    .eq('follower_id', userId);
 
-    return data || [];
-  } catch (error) {
-    throw error;
-  }
+  console.log(`[DEBUG] Hasil Following: Count=${resFollowing.count}, Error=${resFollowing.error?.message}`);
+
+  return { 
+    followersCount: resFollowers.count || 0, 
+    followingCount: resFollowing.count || 0 
+  };
 };
 
-// ✅ PERBAIKAN: Ambil profil user by username
 const getUserProfile = async (username) => {
   try {
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('users')
-      .select(`
-        id,
-        username,
-        full_name,
-        bio,
-        avatar_url,
-        link_tiktok,
-        link_instagram,
-        link_linkedin,
-        link_other,
-        created_at
-      `)
+      .select('*')
       .eq('username', username)
-      .single();
+      .maybeSingle(); // ✅ GANTI single() JADI maybeSingle()
 
     if (error) throw error;
+    if (!user) return null; // Handle jika user tidak ditemukan
 
-    return user;
+    const counts = await getUserCounts(user.id);
+
+    return {
+      ...user,
+      followers_count: counts.followersCount,
+      following_count: counts.followingCount
+    };
   } catch (error) {
     throw error;
   }
 };
 
-// ✅ PERBAIKAN: Update profil user
+// 2. Ambil profil by ID
+const getUserById = async (userId) => {
+  try {
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle(); // ✅ GANTI single() JADI maybeSingle()
+
+    if (error) throw error;
+    if (!user) return null;
+
+    const counts = await getUserCounts(user.id);
+
+    return {
+      ...user,
+      followers_count: counts.followersCount,
+      following_count: counts.followingCount
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ... Fungsi CRUD Lainnya (Pakai Admin juga biar konsisten & aman dari RLS) ...
+
+const getAllUsers = async (search = null) => {
+  try {
+    let query = supabaseAdmin.from('users').select('id, username, full_name, bio, avatar_url');
+    if (search && search.trim() !== '') {
+      query = query.or(`username.ilike.%${search}%,full_name.ilike.%${search}%`);
+    }
+    const { data, error } = await query.limit(20);
+    if (error) throw error;
+    return data || [];
+  } catch (error) { throw error; }
+};
+
 const updateUser = async (userId, updateData) => {
   try {
-    const { data: updated, error } = await supabase
-      .from('users')
-      .update({
-        full_name: updateData.full_name,
-        username: updateData.username,
-        bio: updateData.bio,
-        avatar_url: updateData.avatar_url,
-        link_tiktok: updateData.link_tiktok,
-        link_instagram: updateData.link_instagram,
-        link_linkedin: updateData.link_linkedin,
-        link_other: updateData.link_other,
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-
+    const { data, error } = await supabaseAdmin.from('users').update(updateData).eq('id', userId).select().single();
     if (error) throw error;
-
-    return updated;
-  } catch (error) {
-    throw error;
-  }
+    return data;
+  } catch (error) { throw error; }
 };
 
-// ✅ PERBAIKAN: Hapus user
 const deleteUser = async (userId) => {
   try {
-    const { data: deleted, error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', userId)
-      .select()
-      .single();
-
+    const { data, error } = await supabaseAdmin.from('users').delete().eq('id', userId).select().single();
     if (error) throw error;
-
-    return deleted;
-  } catch (error) {
-    throw error;
-  }
+    return data;
+  } catch (error) { throw error; }
 };
 
-// ✅ BARU: Ambil resep yang di-upload user
 const getMyRecipes = async (userId) => {
   try {
-    const { data: recipes, error } = await supabase
-      .from('recipes')
-      .select(`
-        id,
-        title,
-        image_url,
-        created_at
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabaseAdmin.from('recipes').select('id, title, image_url, created_at').eq('user_id', userId).order('created_at', { ascending: false });
     if (error) throw error;
-
-    return recipes || [];
-  } catch (error) {
-    throw error;
-  }
+    return data || [];
+  } catch (error) { throw error; }
 };
 
-// ✅ BARU: Ambil resep yang di-simpan user
 const getMySavedRecipes = async (userId) => {
   try {
-    const { data: savedRecipes, error } = await supabase
-      .from('saves')
-      .select(`
-        recipe_id,
-        recipes (
-          id,
-          title,
-          image_url,
-          created_at
-        )
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabaseAdmin.from('saves').select('recipe_id, recipes(id, title, image_url, created_at)').eq('user_id', userId).order('created_at', { ascending: false });
     if (error) throw error;
-
-    return (savedRecipes || []).map(save => save.recipes).filter(Boolean);
-  } catch (error) {
-    throw error;
-  }
+    return (data || []).map(save => save.recipes).filter(Boolean);
+  } catch (error) { throw error; }
 };
 
 module.exports = {
-  getAllUsers,           // ✅ BARU
+  getAllUsers,
   getUserProfile,
+  getUserById,
   updateUser,
   deleteUser,
-  getMyRecipes,          // ✅ SUDAH ADA
-  getMySavedRecipes,     // ✅ SUDAH ADA
+  getMyRecipes,
+  getMySavedRecipes,
 };

@@ -6,13 +6,17 @@ const registerUser = async (userData) => {
   const { username, email, password, full_name } = userData;
 
   try {
-    // 1. Cek user sudah ada?
-    const { data: existingUser, error } = await supabase
+    // 1. Cek user sudah ada? Gunakan maybeSingle() agar tidak error jika kosong
+    const { data: existingUser, error: checkError } = await supabase
       .from('users')
       .select('id')
       .or(`username.eq.${username},email.eq.${email}`)
-      .single();
+      .maybeSingle();
 
+    // Jika ada error database beneran (bukan sekadar data kosong)
+    if (checkError) throw checkError;
+
+    // Jika user ditemukan, lempar error validasi
     if (existingUser) {
       throw new Error("Username atau Email sudah terdaftar!");
     }
@@ -21,7 +25,8 @@ const registerUser = async (userData) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // 3. Insert user ke Supabase
-    const { data: newUser } = await supabaseAdmin
+    // PENTING: Tangkap error insert ke variabel 'insertError'
+    const { data: newUser, error: insertError } = await supabaseAdmin
       .from('users')
       .insert([
         {
@@ -34,7 +39,8 @@ const registerUser = async (userData) => {
       .select()
       .single();
 
-    if (error) throw error;
+    // Cek error hasil insert
+    if (insertError) throw insertError;
 
     // 4. Generate JWT token
     const token = jwt.sign(
