@@ -1,17 +1,15 @@
 const userService = require('../services/userService');
-const recipeService = require('../services/recipeService');
+const notifService = require('../services/notificationService');
+const { supabaseAdmin, supabase } = require('../config/supabaseClient'); 
+const jwt = require('jsonwebtoken');
 
 // GET /api/users
 const getUsers = async (req, res) => {
   try {
     const { search } = req.query;
     const users = await userService.getAllUsers(search);
-    res.json({
-      count: users.length,
-      users,
-    });
+    res.json({ count: users.length, users });
   } catch (err) {
-    console.error('Get Users Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -20,17 +18,9 @@ const getUsers = async (req, res) => {
 const getMyProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { data: user, error } = require('../config/supabaseClient').supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) throw error;
-
+    const user = await userService.getUserById(userId);
     res.json({ profile: user });
   } catch (err) {
-    console.error('Get My Profile Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -39,201 +29,176 @@ const getMyProfile = async (req, res) => {
 const getUserProfile = async (req, res) => {
   try {
     const { username } = req.params;
-
-    if (!username) {
-      return res.status(400).json({ error: 'Username harus diisi' });
-    }
+    if (!username) return res.status(400).json({ error: 'Username harus diisi' });
 
     const user = await userService.getUserProfile(username);
+    if (!user) return res.status(404).json({ error: 'User tidak ditemukan' });
 
-    if (!user) {
-      return res.status(404).json({ error: 'User tidak ditemukan' });
+    let isFollowing = false;
+    const authHeader = req.headers.authorization;
+
+    if (authHeader) {
+      try {
+        const token = authHeader.split(' ')[1];
+        if (token && token !== 'null') {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const currentUserId = decoded.id;
+
+            console.log(`[DEBUG CHECK FOLLOW] CurrentUser: ${currentUserId} vs TargetUser: ${user.id}`);
+
+            if (currentUserId !== user.id) {
+              const { data, error } = await supabaseAdmin
+                .from('follows')
+                .select('*')
+                .eq('follower_id', currentUserId)
+                .eq('following_id', user.id)
+                .maybeSingle();
+
+              if (error) console.error('[DEBUG CHECK FOLLOW] Error DB:', error.message);
+              console.log('[DEBUG CHECK FOLLOW] Data ditemukan:', data);
+
+              if (data) {
+                isFollowing = true;
+              }
+            }
+        }
+      } catch (err) {
+        console.log('Token check error:', err.message);
+      }
     }
 
-    res.json({ profile: user });
+    res.json({
+      profile: {
+        ...user,
+        is_following: isFollowing 
+      }
+    });
+
   } catch (err) {
     console.error('Get User Profile Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// PUT /api/users/me/profile
 const updateProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const updatedUser = await userService.updateUser(userId, req.body);
-
-    if (!updatedUser) {
-      return res.status(404).json({ error: 'User tidak ditemukan' });
-    }
-
-    res.json({
-      message: 'Profil berhasil diperbarui!',
-      user: updatedUser,
-    });
+    const updatedUser = await userService.updateUser(req.user.id, req.body);
+    res.json({ message: 'Profil diperbarui', user: updatedUser });
   } catch (err) {
-    console.error('Update Profile Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// DELETE /api/users/:id
 const removeUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    const authUserId = req.user.id;
-
-    // Pastikan user hanya bisa hapus akun mereka sendiri
-    if (id !== authUserId) {
-      return res.status(403).json({ 
-        error: 'Anda tidak berhak menghapus akun user lain' 
-      });
-    }
-
-    const deletedUser = await userService.deleteUser(id);
-
-    if (!deletedUser) {
-      return res.status(404).json({ error: 'User tidak ditemukan' });
-    }
-
-    res.json({
-      message: 'Akun berhasil dihapus!',
-      user: deletedUser,
-    });
+    if (req.params.id !== req.user.id) return res.status(403).json({ error: 'Dilarang' });
+    await userService.deleteUser(req.params.id);
+    res.json({ message: 'Akun dihapus' });
   } catch (err) {
-    console.error('Delete User Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// POST /api/users/:username/follow
 const followUser = async (req, res) => {
   try {
     const { username } = req.params;
     const followerId = req.user.id;
 
-    if (!username) {
-      return res.status(400).json({ error: 'Username harus diisi' });
-    }
+    console.log(`[Follow] ${followerId} ingin follow ${username}`);
 
-    // Ambil ID user yang akan di-follow
-    const { data: userToFollow, error: userError } = require('../config/supabaseClient').supabase
+    const { data: targetUser, error: findError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('username', username)
       .single();
 
-    if (userError || !userToFollow) {
-      return res.status(404).json({ error: 'User tidak ditemukan' });
+    if (findError || !targetUser) {
+      return res.status(404).json({ error: 'User target tidak ditemukan' });
     }
+    
+    const followingId = targetUser.id;
+    if (followerId === followingId) return res.status(400).json({ error: 'Tidak bisa follow diri sendiri' });
 
-    const followingId = userToFollow.id;
-
-    // Cek apakah sudah follow
-    const { data: existingFollow } = require('../config/supabaseClient').supabase
+    // ✅ PERBAIKAN: Ganti .select('id') jadi .select('*')
+    const { data: existing } = await supabaseAdmin
       .from('follows')
-      .select('id')
+      .select('*') 
       .eq('follower_id', followerId)
       .eq('following_id', followingId)
       .maybeSingle();
-
-    if (existingFollow) {
-      return res.status(400).json({ error: 'Anda sudah mengikuti user ini' });
+    
+    if (existing) {
+        return res.status(200).json({ message: 'Sudah mengikuti' }); 
     }
 
-    // Tambah follow
-    await require('../config/supabaseClient').supabase
+    const { error: insertError } = await supabaseAdmin
       .from('follows')
-      .insert([{
-        follower_id: followerId,
-        following_id: followingId,
-      }]);
+      .insert([{ follower_id: followerId, following_id: followingId }]);
 
-    res.json({ message: 'Berhasil mengikuti user' });
+    if (insertError) throw insertError;
+
+    try {
+      await notifService.createNotification(followingId, followerId, 'follow', 'mulai mengikuti Anda');
+    } catch(e) { console.log('Notif error:', e.message); }
+
+    res.json({ message: 'Berhasil mengikuti' });
   } catch (err) {
-    console.error('Follow User Error:', err);
+    console.error('[Follow Error]:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// POST /api/users/:username/unfollow
 const unfollowUser = async (req, res) => {
   try {
     const { username } = req.params;
     const followerId = req.user.id;
 
-    if (!username) {
-      return res.status(400).json({ error: 'Username harus diisi' });
-    }
+    const { data: targetUser } = await supabaseAdmin.from('users').select('id').eq('username', username).single();
+    if (!targetUser) return res.status(404).json({ error: 'User tidak ditemukan' });
 
-    // Ambil ID user yang akan di-unfollow
-    const { data: userToUnfollow, error: userError } = require('../config/supabaseClient').supabase
-      .from('users')
-      .select('id')
-      .eq('username', username)
-      .single();
-
-    if (userError || !userToUnfollow) {
-      return res.status(404).json({ error: 'User tidak ditemukan' });
-    }
-
-    const followingId = userToUnfollow.id;
-
-    // Hapus follow
-    await require('../config/supabaseClient').supabase
+    const { error } = await supabaseAdmin
       .from('follows')
       .delete()
       .eq('follower_id', followerId)
-      .eq('following_id', followingId);
+      .eq('following_id', targetUser.id);
 
-    res.json({ message: 'Berhasil berhenti mengikuti user' });
+    if (error) throw error;
+
+    res.json({ message: 'Berhasil berhenti mengikuti' });
   } catch (err) {
-    console.error('Unfollow User Error:', err);
+    console.error('[Unfollow Error]:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// GET /api/users/me/recipes
 const getMyRecipes = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const recipes = await userService.getMyRecipes(userId);
-
-    res.json({
-      count: recipes.length,
-      recipes,
-    });
-  } catch (err) {
-    console.error('Get My Recipes Error:', err);
-    res.status(500).json({ error: err.message });
-  }
+    const recipes = await userService.getMyRecipes(req.user.id);
+    res.json({ count: recipes.length, recipes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
-// GET /api/users/me/saved-recipes
 const getMySavedRecipes = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const recipes = await userService.getMySavedRecipes(userId);
+    const recipes = await userService.getMySavedRecipes(req.user.id);
+    res.json({ count: recipes.length, recipes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+};
 
-    res.json({
-      count: recipes.length,
-      recipes,
-    });
+const getUserRecipesByUsername = async (req, res) => {
+  try {
+    const { username } = req.params;
+    const user = await userService.getUserProfile(username);
+    if (!user) return res.status(404).json({ error: 'User tidak ditemukan' });
+    const recipes = await userService.getMyRecipes(user.id);
+    res.json({ count: recipes.length, recipes });
   } catch (err) {
-    console.error('Get My Saved Recipes Error:', err);
+    console.error('Get User Recipes Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-
 module.exports = {
-  getUsers,
-  getMyProfile,
-  getUserProfile,
-  updateProfile,
-  removeUser,
-  followUser,
-  unfollowUser,
-  getMyRecipes,
-  getMySavedRecipes,
+  getUsers, getMyProfile, getUserProfile, updateProfile, removeUser,
+  followUser, unfollowUser, getMyRecipes, getMySavedRecipes, getUserRecipesByUsername
 };

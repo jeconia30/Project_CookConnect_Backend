@@ -12,6 +12,9 @@ router.get('/me', authMiddleware, userController.getMyProfile);
 // GET /api/users/:username -> Ambil profil user by username
 router.get('/:username', userController.getUserProfile);
 
+// ✅ BARU: Ambil resep user by username (Public)
+router.get('/:username/recipes', userController.getUserRecipesByUsername);
+
 // PUT /api/users/me/profile -> Update profil user (HARUS LOGIN)
 router.put('/me/profile', authMiddleware, userController.updateProfile);
 

@@ -1,6 +1,5 @@
-const { supabase } = require('../config/supabaseClient');
+const { supabaseAdmin } = require('../config/supabaseClient');
 const path = require('path');
-const fs = require('fs');
 
 const uploadAvatar = async (req, res) => {
   try {
@@ -11,34 +10,40 @@ const uploadAvatar = async (req, res) => {
     const userId = req.user.id;
     const file = req.file;
     const fileExt = path.extname(file.originalname);
+    // Nama file unik: userID-timestamp.ext
     const fileName = `${userId}-${Date.now()}${fileExt}`;
 
-    // Upload ke Supabase Storage - bucket "avatar"
-    const { data, error } = await supabase.storage
-      .from('avatar')
+    // 1. Upload ke Supabase Storage menggunakan supabaseAdmin (Bypass RLS)
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('avatars')
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
+        upsert: true // Timpa jika ada file dengan nama sama
       });
 
-    if (error) throw error;
+    if (uploadError) throw uploadError;
 
-    // Dapatkan public URL
-    const { data: publicUrl } = supabase.storage
-      .from('avatar')
+    // 2. Dapatkan public URL (Gunakan method yang benar)
+    const { data } = supabaseAdmin.storage
+      .from('avatars')
       .getPublicUrl(fileName);
+      
+    const publicUrl = data.publicUrl;
 
-    // Update user profile dengan avatar URL
-    await supabase
+    // 3. Update user profile di database menggunakan supabaseAdmin
+    const { error: dbError } = await supabaseAdmin
       .from('users')
-      .update({ avatar_url: publicUrl.publicUrl })
+      .update({ avatar_url: publicUrl })
       .eq('id', userId);
+
+    if (dbError) throw dbError;
 
     res.json({
       message: 'Avatar berhasil diupload',
-      url: publicUrl.publicUrl,
+      url: publicUrl,
     });
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('Upload Avatar Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 };
@@ -53,26 +58,26 @@ const uploadRecipeImage = async (req, res) => {
     const fileExt = path.extname(file.originalname);
     const fileName = `recipe-${Date.now()}${fileExt}`;
 
-    // Upload ke Supabase Storage - bucket "masakan-images"
-    const { data, error } = await supabase.storage
+    // 1. Upload ke Supabase Storage (Admin)
+    const { error: uploadError } = await supabaseAdmin.storage
       .from('masakan-images')
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
       });
 
-    if (error) throw error;
+    if (uploadError) throw uploadError;
 
-    // Dapatkan public URL
-    const { data: publicUrl } = supabase.storage
+    // 2. Dapatkan URL
+    const { data } = supabaseAdmin.storage
       .from('masakan-images')
       .getPublicUrl(fileName);
 
     res.json({
       message: 'Gambar resep berhasil diupload',
-      url: publicUrl.publicUrl,
+      url: data.publicUrl,
     });
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('Upload Recipe Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 };

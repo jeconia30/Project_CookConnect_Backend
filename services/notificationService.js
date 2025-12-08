@@ -1,31 +1,67 @@
-// services/notificationService.js
-const pool = require('../config/db');
+const { supabase } = require('../config/supabaseClient');
 
 const createNotification = async (receiver_id, sender_id, type, message, recipe_id = null) => {
   if (receiver_id === sender_id) return; // Jangan notif diri sendiri
-  
-  const query = `
-    INSERT INTO notifications (user_id, sender_id, type, message, recipe_id)
-    VALUES ($1, $2, $3, $4, $5)
-  `;
-  await pool.query(query, [receiver_id, sender_id, type, message, recipe_id]);
+
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .insert([
+        {
+          user_id: receiver_id,
+          sender_id: sender_id,
+          type: type,
+          message: message,
+          recipe_id: recipe_id
+        }
+      ]);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Gagal membuat notifikasi:', error.message);
+    // Tidak throw error agar flow utama tidak terhenti hanya karena notifikasi gagal
+  }
 };
 
 const getUserNotifications = async (userId) => {
-  const query = `
-    SELECT n.*, u.username, u.avatar_url 
-    FROM notifications n
-    JOIN users u ON n.sender_id = u.id
-    WHERE n.user_id = $1
-    ORDER BY n.created_at DESC
-  `;
-  const result = await pool.query(query, [userId]);
-  return result.rows;
+  try {
+    // Join ke tabel users untuk ambil info pengirim (sender)
+    const { data, error } = await supabase
+      .from('notifications')
+      .select(`
+        *,
+        sender:sender_id (
+          username,
+          avatar_url
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Format data agar sesuai dengan frontend (mengeluarkan username dari object sender)
+    return (data || []).map(n => ({
+      ...n,
+      username: n.sender?.username || 'Unknown',
+      avatar_url: n.sender?.avatar_url
+    }));
+  } catch (error) {
+    throw error;
+  }
 };
 
-// Tandai notif sudah dibaca (opsional, buat nanti)
 const markAsRead = async (notifId) => {
-    await pool.query('UPDATE notifications SET is_read = true WHERE id = $1', [notifId]);
-}
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notifId);
+
+    if (error) throw error;
+  } catch (error) {
+    throw error;
+  }
+};
 
 module.exports = { createNotification, getUserNotifications, markAsRead };
