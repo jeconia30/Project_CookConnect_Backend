@@ -85,27 +85,31 @@ const getRecipeDetail = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // --- LOGIKA BACA TOKEN MANUAL ---
+    // --- PERBAIKAN: BACA TOKEN MANUAL (Optional Auth) ---
+    // Ini penting agar backend tahu siapa user yang sedang melihat
     let userId = null;
     const authHeader = req.headers.authorization;
+
     if (authHeader) {
       try {
         const token = authHeader.split(" ")[1];
-        if (token && token !== "undefined") {
+        if (token && token !== "undefined" && token !== "null") {
           const decoded = jwt.verify(token, process.env.JWT_SECRET);
           userId = decoded.id;
         }
       } catch (e) {
-        console.log("Token error (Detail Page):", e.message);
+        console.log("Token error di detail page:", e.message);
+        // Biarkan userId null, artinya user dianggap tamu
       }
     }
-    // --------------------------------
+    // ----------------------------------------------------
 
+    // VALIDASI
     if (!id || id.trim() === "") {
       return errorResponse(res, "ID resep diperlukan", 400);
     }
 
-    // Kirim userId ke service
+    // Kirim userId (bisa null atau ada isinya) ke service
     const recipe = await recipeService.getRecipeById(id, userId);
 
     if (!recipe) {
@@ -166,7 +170,7 @@ const addRecipe = async (req, res) => {
       // ✅ PERBAIKAN: Teruskan ke service
       video_url,
       tiktok_url,
-      instagram_url
+      instagram_url,
     });
 
     return successResponse(res, newRecipe, "Resep berhasil diterbitkan!", 201);
