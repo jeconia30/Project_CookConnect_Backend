@@ -19,10 +19,11 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
         created_at,
         user_id,
         users:user_id (id, username, avatar_url, full_name),
+        recipe_steps (step_number, instruction), 
         likes:likes(count),
         comments:comments(count),
         saves:saves(count)
-      `);
+      `); // ^^^ TAMBAHKAN recipe_steps DI SINI ^^^
 
     // Filter search
     if (search && search.trim() !== '') {
@@ -59,15 +60,23 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
         user_id: recipe.user_id,
         avatar_url: recipe.users?.avatar_url,
         avatar: recipe.users?.avatar_url,
+        
+        // vvv TAMBAHKAN LOGIKA MAPPING INI vvv
+        steps: recipe.recipe_steps
+          ? recipe.recipe_steps
+              .sort((a, b) => a.step_number - b.step_number) // Urutkan langkah
+              .map(s => s.instruction) // Ambil teks instruksinya saja
+          : [],
+        // ^^^ END TAMBAHAN ^^^
+
         like_count: likes,
-        likes, // Field ini dipakai untuk sorting
+        likes, 
         comment_count: comments,
         comments,
         saves: recipe.saves?.[0]?.count || 0,
       };
     });
 
-    // ✅ LOGIKA SORTING TRENDING (BY LIKES)
     if (sort === 'trending') {
       formattedData.sort((a, b) => b.likes - a.likes);
     }
