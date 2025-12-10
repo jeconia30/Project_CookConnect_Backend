@@ -1,25 +1,50 @@
-const recipeService = require('../services/recipeService');
-const { successResponse, errorResponse, validationErrorResponse } = require('../utils/responseFormatter');
-const { validateCreateRecipeInput } = require('../utils/validator');
+const recipeService = require("../services/recipeService");
+const {
+  successResponse,
+  errorResponse,
+  validationErrorResponse,
+} = require("../utils/responseFormatter");
+const { validateCreateRecipeInput } = require("../utils/validator");
+const jwt = require("jsonwebtoken");
 
 // GET /api/recipes -> Ambil semua resep (FIXED)
 const getRecipes = async (req, res) => {
   try {
     const { search, sort } = req.query;
-    const userId = req.user?.id || null;
+
+    // --- PERBAIKAN: Deteksi User ID dari Token (Optional Auth) ---
+    let userId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      try {
+        const token = authHeader.split(" ")[1];
+        if (token && token !== "undefined") {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          userId = decoded.id;
+        }
+      } catch (e) {
+        // Token invalid/expired, anggap sebagai guest (userId = null)
+        console.log("Token error di getRecipes:", e.message);
+      }
+    }
+    // -------------------------------------------------------------
 
     const recipes = await recipeService.getAllRecipes(
       { search, sort },
-      userId
+      userId // Kirim userId yang sudah didapat ke service
     );
 
-    return successResponse(res, {
-      count: recipes.length,
-      recipes,
-    }, 'Resep berhasil diambil');
+    return successResponse(
+      res,
+      {
+        count: recipes.length,
+        recipes,
+      },
+      "Resep berhasil diambil"
+    );
   } catch (err) {
-    console.error('Get Recipes Error:', err);
-    return errorResponse(res, 'Gagal mengambil resep', 500);
+    console.error("Get Recipes Error:", err);
+    return errorResponse(res, "Gagal mengambil resep", 500);
   }
 };
 
@@ -29,25 +54,29 @@ const searchRecipes = async (req, res) => {
     const { q } = req.query;
 
     // VALIDASI
-    if (!q || q.trim() === '') {
-      return errorResponse(res, 'Query pencarian tidak boleh kosong', 400);
+    if (!q || q.trim() === "") {
+      return errorResponse(res, "Query pencarian tidak boleh kosong", 400);
     }
 
     // Cek panjang minimal
     if (q.trim().length < 2) {
-      return errorResponse(res, 'Minimal 2 karakter untuk pencarian', 400);
+      return errorResponse(res, "Minimal 2 karakter untuk pencarian", 400);
     }
 
     const recipes = await recipeService.searchRecipes(q.trim());
 
-    return successResponse(res, {
-      query: q,
-      count: recipes.length,
-      recipes,
-    }, 'Pencarian resep berhasil');
+    return successResponse(
+      res,
+      {
+        query: q,
+        count: recipes.length,
+        recipes,
+      },
+      "Pencarian resep berhasil"
+    );
   } catch (err) {
-    console.error('Search Recipes Error:', err);
-    return errorResponse(res, 'Gagal mencari resep', 500);
+    console.error("Search Recipes Error:", err);
+    return errorResponse(res, "Gagal mencari resep", 500);
   }
 };
 
@@ -55,14 +84,28 @@ const searchRecipes = async (req, res) => {
 const getRecipeDetail = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id || null;
+    
+    // --- PERBAIKAN: Baca Token Manual (Optional Auth) ---
+    let userId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      try {
+        const token = authHeader.split(' ')[1];
+        if (token && token !== 'undefined') {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          userId = decoded.id;
+        }
+      } catch (e) {
+        console.log("Token error di getRecipeDetail:", e.message);
+      }
+    }
+    // ----------------------------------------------------
 
-    // VALIDASI
     if (!id || id.trim() === '') {
       return errorResponse(res, 'ID resep diperlukan', 400);
     }
 
-    const recipe = await recipeService.getRecipeById(id, userId);
+    const recipe = await recipeService.getRecipeById(id, userId); // Kirim userId
 
     if (!recipe) {
       return errorResponse(res, 'Resep tidak ditemukan', 404);
@@ -79,7 +122,16 @@ const getRecipeDetail = async (req, res) => {
 const addRecipe = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { title, description, image_url, total_time, servings, difficulty, ingredients, steps } = req.body;
+    const {
+      title,
+      description,
+      image_url,
+      total_time,
+      servings,
+      difficulty,
+      ingredients,
+      steps,
+    } = req.body;
 
     // VALIDASI INPUT
     const validationErrors = validateCreateRecipeInput({
@@ -109,15 +161,10 @@ const addRecipe = async (req, res) => {
       steps,
     });
 
-    return successResponse(
-      res,
-      newRecipe,
-      'Resep berhasil diterbitkan!',
-      201
-    );
+    return successResponse(res, newRecipe, "Resep berhasil diterbitkan!", 201);
   } catch (err) {
-    console.error('Add Recipe Error:', err);
-    return errorResponse(res, 'Gagal menerbitkan resep', 500);
+    console.error("Add Recipe Error:", err);
+    return errorResponse(res, "Gagal menerbitkan resep", 500);
   }
 };
 
@@ -127,16 +174,16 @@ const likeRecipe = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id || id.trim() === '') {
-      return errorResponse(res, 'ID resep diperlukan', 400);
+    if (!id || id.trim() === "") {
+      return errorResponse(res, "ID resep diperlukan", 400);
     }
 
     const result = await recipeService.toggleLike(userId, id, true);
 
-    return successResponse(res, result, 'Resep berhasil di-like');
+    return successResponse(res, result, "Resep berhasil di-like");
   } catch (err) {
-    console.error('Like Recipe Error:', err);
-    return errorResponse(res, 'Gagal like resep', 500);
+    console.error("Like Recipe Error:", err);
+    return errorResponse(res, "Gagal like resep", 500);
   }
 };
 
@@ -146,16 +193,16 @@ const unlikeRecipe = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id || id.trim() === '') {
-      return errorResponse(res, 'ID resep diperlukan', 400);
+    if (!id || id.trim() === "") {
+      return errorResponse(res, "ID resep diperlukan", 400);
     }
 
     const result = await recipeService.toggleLike(userId, id, false);
 
-    return successResponse(res, result, 'Resep berhasil di-unlike');
+    return successResponse(res, result, "Resep berhasil di-unlike");
   } catch (err) {
-    console.error('Unlike Recipe Error:', err);
-    return errorResponse(res, 'Gagal unlike resep', 500);
+    console.error("Unlike Recipe Error:", err);
+    return errorResponse(res, "Gagal unlike resep", 500);
   }
 };
 
@@ -165,16 +212,16 @@ const saveRecipe = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id || id.trim() === '') {
-      return errorResponse(res, 'ID resep diperlukan', 400);
+    if (!id || id.trim() === "") {
+      return errorResponse(res, "ID resep diperlukan", 400);
     }
 
     const result = await recipeService.toggleSave(userId, id, true);
 
-    return successResponse(res, result, 'Resep berhasil disimpan');
+    return successResponse(res, result, "Resep berhasil disimpan");
   } catch (err) {
-    console.error('Save Recipe Error:', err);
-    return errorResponse(res, 'Gagal menyimpan resep', 500);
+    console.error("Save Recipe Error:", err);
+    return errorResponse(res, "Gagal menyimpan resep", 500);
   }
 };
 
@@ -184,16 +231,16 @@ const unsaveRecipe = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    if (!id || id.trim() === '') {
-      return errorResponse(res, 'ID resep diperlukan', 400);
+    if (!id || id.trim() === "") {
+      return errorResponse(res, "ID resep diperlukan", 400);
     }
 
     const result = await recipeService.toggleSave(userId, id, false);
 
-    return successResponse(res, result, 'Resep berhasil dihapus dari simpanan');
+    return successResponse(res, result, "Resep berhasil dihapus dari simpanan");
   } catch (err) {
-    console.error('Unsave Recipe Error:', err);
-    return errorResponse(res, 'Gagal menghapus simpanan resep', 500);
+    console.error("Unsave Recipe Error:", err);
+    return errorResponse(res, "Gagal menghapus simpanan resep", 500);
   }
 };
 
@@ -202,20 +249,24 @@ const getUserRecipes = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    if (!userId || userId.trim() === '') {
-      return errorResponse(res, 'ID user diperlukan', 400);
+    if (!userId || userId.trim() === "") {
+      return errorResponse(res, "ID user diperlukan", 400);
     }
 
     const recipes = await recipeService.getRecipesByUserId(userId);
 
-    return successResponse(res, {
-      userId,
-      count: recipes.length,
-      recipes,
-    }, 'Resep user berhasil diambil');
+    return successResponse(
+      res,
+      {
+        userId,
+        count: recipes.length,
+        recipes,
+      },
+      "Resep user berhasil diambil"
+    );
   } catch (err) {
-    console.error('Get User Recipes Error:', err);
-    return errorResponse(res, 'Gagal mengambil resep user', 500);
+    console.error("Get User Recipes Error:", err);
+    return errorResponse(res, "Gagal mengambil resep user", 500);
   }
 };
 
