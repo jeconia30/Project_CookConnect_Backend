@@ -182,12 +182,13 @@ const getRecipeById = async (id, userId = null) => {
 
     if (error) throw error;
 
+    // Default status
     let isLiked = false;
     let isSaved = false;
-    let isFollowing = false; // Variable baru
+    let isFollowing = false; // <--- VARIABLE BARU
 
     if (userId) {
-      // Cek Like
+      // 1. Cek Like
       const { data: likeCheck } = await supabase
         .from("likes")
         .select("id")
@@ -196,7 +197,7 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isLiked = !!likeCheck;
 
-      // Cek Save
+      // 2. Cek Save
       const { data: saveCheck } = await supabase
         .from("saves")
         .select("id")
@@ -205,7 +206,8 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // ✅ PERBAIKAN 3: Cek Follow di Detail Page
+      // 3. Cek Follow (TAMBAHAN PENTING)
+      // Cek apakah 'userId' (saya) mengikuti 'recipe.user_id' (pembuat resep)
       const { data: followCheck } = await supabase
         .from("follows")
         .select("id")
@@ -225,11 +227,8 @@ const getRecipeById = async (id, userId = null) => {
       servings: recipe.servings,
       difficulty: recipe.difficulty,
       created_at: recipe.created_at,
-
-      // Fix Nama di Detail juga
-      author: recipe.users?.username, // Username untuk URL/Handle
-      user_fullname: recipe.users?.full_name || recipe.users?.username, // Nama Asli untuk Tampilan
-
+      author: recipe.users?.username,
+      user_fullname: recipe.users?.full_name,
       avatar_url: recipe.users?.avatar_url,
       avatar: recipe.users?.avatar_url,
       bio: recipe.users?.bio,
@@ -242,7 +241,10 @@ const getRecipeById = async (id, userId = null) => {
       comment_count: recipe.comments?.[0]?.count || 0,
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing, // Kirim status follow ke frontend
+      is_following: isFollowing, // <--- KIRIM STATUS KE FRONTEND
+      video_url: recipe.video_url,
+      tiktok_url: recipe.tiktok_url,
+      instagram_url: recipe.instagram_url,
     };
   } catch (error) {
     throw error;
@@ -261,12 +263,15 @@ const createRecipe = async (data) => {
     difficulty,
     ingredients,
     steps,
+    video_url,
+    tiktok_url,
+    instagram_url,
   } = data;
 
-  try {
+ try {
     // 1. Insert recipe utama
     const { data: newRecipe, error: recipeError } = await supabase
-      .from("recipes")
+      .from('recipes')
       .insert([
         {
           user_id,
@@ -276,6 +281,10 @@ const createRecipe = async (data) => {
           total_time: parseInt(total_time) || 0,
           servings: parseInt(servings) || 0,
           difficulty,
+          // ✅ PERBAIKAN: Masukkan ke database
+          video_url,
+          tiktok_url,
+          instagram_url
         },
       ])
       .select()

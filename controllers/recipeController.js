@@ -84,37 +84,38 @@ const searchRecipes = async (req, res) => {
 const getRecipeDetail = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // --- PERBAIKAN: Baca Token Manual (Optional Auth) ---
+
+    // --- LOGIKA BACA TOKEN MANUAL ---
     let userId = null;
     const authHeader = req.headers.authorization;
     if (authHeader) {
       try {
-        const token = authHeader.split(' ')[1];
-        if (token && token !== 'undefined') {
+        const token = authHeader.split(" ")[1];
+        if (token && token !== "undefined") {
           const decoded = jwt.verify(token, process.env.JWT_SECRET);
           userId = decoded.id;
         }
       } catch (e) {
-        console.log("Token error di getRecipeDetail:", e.message);
+        console.log("Token error (Detail Page):", e.message);
       }
     }
-    // ----------------------------------------------------
+    // --------------------------------
 
-    if (!id || id.trim() === '') {
-      return errorResponse(res, 'ID resep diperlukan', 400);
+    if (!id || id.trim() === "") {
+      return errorResponse(res, "ID resep diperlukan", 400);
     }
 
-    const recipe = await recipeService.getRecipeById(id, userId); // Kirim userId
+    // Kirim userId ke service
+    const recipe = await recipeService.getRecipeById(id, userId);
 
     if (!recipe) {
-      return errorResponse(res, 'Resep tidak ditemukan', 404);
+      return errorResponse(res, "Resep tidak ditemukan", 404);
     }
 
-    return successResponse(res, recipe, 'Detail resep berhasil diambil');
+    return successResponse(res, recipe, "Detail resep berhasil diambil");
   } catch (err) {
-    console.error('Get Recipe Detail Error:', err);
-    return errorResponse(res, 'Gagal mengambil detail resep', 500);
+    console.error("Get Recipe Detail Error:", err);
+    return errorResponse(res, "Gagal mengambil detail resep", 500);
   }
 };
 
@@ -131,6 +132,9 @@ const addRecipe = async (req, res) => {
       difficulty,
       ingredients,
       steps,
+      video_url,
+      tiktok_url,
+      instagram_url,
     } = req.body;
 
     // VALIDASI INPUT
@@ -159,6 +163,10 @@ const addRecipe = async (req, res) => {
       difficulty,
       ingredients,
       steps,
+      // ✅ PERBAIKAN: Teruskan ke service
+      video_url,
+      tiktok_url,
+      instagram_url
     });
 
     return successResponse(res, newRecipe, "Resep berhasil diterbitkan!", 201);
