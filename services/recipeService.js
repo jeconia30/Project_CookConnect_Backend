@@ -1,4 +1,4 @@
-const { supabase } = require("../config/supabaseClient");
+const { supabase, supabaseAdmin } = require("../config/supabaseClient");
 const notifService = require("./notificationService");
 
 // Ambil semua resep dengan filter dan sort
@@ -164,9 +164,11 @@ const searchRecipes = async (query) => {
 // Ambil detail resep
 const getRecipeById = async (id, userId = null) => {
   try {
+    // Ambil data resep (pakai supabase biasa boleh, atau admin juga boleh)
     const { data: recipe, error } = await supabase
-      .from('recipes')
-      .select(`
+      .from("recipes")
+      .select(
+        `
         *,
         users:user_id (id, username, avatar_url, bio, full_name),
         recipe_ingredients (item),
@@ -174,8 +176,9 @@ const getRecipeById = async (id, userId = null) => {
         likes:likes(count),
         comments:comments(count),
         saves:saves(count)
-      `)
-      .eq('id', id)
+      `
+      )
+      .eq("id", id)
       .single();
 
     if (error) throw error;
@@ -183,38 +186,38 @@ const getRecipeById = async (id, userId = null) => {
     // Default status
     let isLiked = false;
     let isSaved = false;
-    let isFollowing = false; // <--- VARIABLE BARU
+    let isFollowing = false;
 
     if (userId) {
       // 1. Cek Like
-      const { data: likeCheck } = await supabase
-        .from('likes')
-        .select('id')
-        .eq('recipe_id', id)
-        .eq('user_id', userId)
+      const { data: likeCheck } = await supabaseAdmin // Gunakan supabaseAdmin biar aman
+        .from("likes")
+        .select("id")
+        .eq("recipe_id", id)
+        .eq("user_id", userId)
         .maybeSingle();
       isLiked = !!likeCheck;
 
       // 2. Cek Save
-      const { data: saveCheck } = await supabase
-        .from('saves')
-        .select('id')
-        .eq('recipe_id', id)
-        .eq('user_id', userId)
+      const { data: saveCheck } = await supabaseAdmin // Gunakan supabaseAdmin
+        .from("saves")
+        .select("id")
+        .eq("recipe_id", id)
+        .eq("user_id", userId)
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // 3. Cek Follow (TAMBAHAN PENTING UNTUK TOMBOL IKUTI)
-      // Cek apakah 'userId' (saya) mengikuti 'recipe.user_id' (pembuat resep)
-      const { data: followCheck } = await supabase
-        .from('follows')
-        .select('id')
-        .eq('follower_id', userId)
-        .eq('following_id', recipe.user_id)
+      // 3. Cek Follow (INI BAGIAN YANG BUG)
+      // Gunakan supabaseAdmin untuk memastikan kita bisa baca tabel follows
+      const { data: followCheck } = await supabaseAdmin
+        .from("follows")
+        .select("id")
+        .eq("follower_id", userId)
+        .eq("following_id", recipe.user_id)
         .maybeSingle();
+
       isFollowing = !!followCheck;
     }
-
     return {
       id: recipe.id,
       title: recipe.title,
@@ -230,17 +233,18 @@ const getRecipeById = async (id, userId = null) => {
       avatar_url: recipe.users?.avatar_url,
       avatar: recipe.users?.avatar_url,
       bio: recipe.users?.bio,
-      ingredients: recipe.recipe_ingredients?.map(r => r.item) || [],
-      steps: recipe.recipe_steps
-        ?.sort((a, b) => a.step_number - b.step_number)
-        .map(r => r.instruction) || [],
+      ingredients: recipe.recipe_ingredients?.map((r) => r.item) || [],
+      steps:
+        recipe.recipe_steps
+          ?.sort((a, b) => a.step_number - b.step_number)
+          .map((r) => r.instruction) || [],
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
-      
+
       // ✅ STATUS YANG DIPERBAIKI
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing, 
+      is_following: isFollowing,
 
       // ✅ LINK SOSMED (Dari perbaikan sebelumnya)
       video_url: recipe.video_url,
@@ -269,10 +273,10 @@ const createRecipe = async (data) => {
     instagram_url,
   } = data;
 
- try {
+  try {
     // 1. Insert recipe utama
     const { data: newRecipe, error: recipeError } = await supabase
-      .from('recipes')
+      .from("recipes")
       .insert([
         {
           user_id,
@@ -285,7 +289,7 @@ const createRecipe = async (data) => {
           // ✅ PERBAIKAN: Masukkan ke database
           video_url,
           tiktok_url,
-          instagram_url
+          instagram_url,
         },
       ])
       .select()

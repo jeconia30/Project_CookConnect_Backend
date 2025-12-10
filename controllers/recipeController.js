@@ -15,10 +15,11 @@ const getUserIdFromToken = (req) => {
       const token = authHeader.split(" ")[1];
       if (token && token !== "undefined" && token !== "null") {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        return decoded.id;
+        return decoded.id; // Berhasil dapat ID
       }
     }
   } catch (error) {
+    // Biarkan error diam (guest mode), tapi log di console server untuk debugging
     console.log("Token check failed (Guest mode):", error.message);
   }
   return null;
