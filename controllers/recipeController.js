@@ -8,31 +8,31 @@ const { validateCreateRecipeInput } = require("../utils/validator");
 const jwt = require("jsonwebtoken");
 
 // GET /api/recipes -> Ambil semua resep (FIXED)
+const getUserIdFromToken = (req) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const token = authHeader.split(" ")[1];
+      if (token && token !== "undefined" && token !== "null") {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        return decoded.id;
+      }
+    }
+  } catch (error) {
+    console.log("Token check failed (Guest mode):", error.message);
+  }
+  return null;
+};
+
+// GET /api/recipes -> Ambil semua resep (Feed)
 const getRecipes = async (req, res) => {
   try {
     const { search, sort } = req.query;
 
-    // --- PERBAIKAN: Deteksi User ID dari Token (Optional Auth) ---
-    let userId = null;
-    const authHeader = req.headers.authorization;
-    if (authHeader) {
-      try {
-        const token = authHeader.split(" ")[1];
-        if (token && token !== "undefined") {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          userId = decoded.id;
-        }
-      } catch (e) {
-        // Token invalid/expired, anggap sebagai guest (userId = null)
-        console.log("Token error di getRecipes:", e.message);
-      }
-    }
-    // -------------------------------------------------------------
+    // ✅ PERBAIKAN: Gunakan helper manual, jangan req.user?.id
+    const userId = getUserIdFromToken(req);
 
-    const recipes = await recipeService.getAllRecipes(
-      { search, sort },
-      userId // Kirim userId yang sudah didapat ke service
-    );
+    const recipes = await recipeService.getAllRecipes({ search, sort }, userId);
 
     return successResponse(
       res,
@@ -80,36 +80,17 @@ const searchRecipes = async (req, res) => {
   }
 };
 
-// GET /api/recipes/:id -> Ambil detail resep (FIXED)
 const getRecipeDetail = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // --- PERBAIKAN: BACA TOKEN MANUAL (Optional Auth) ---
-    // Ini penting agar backend tahu siapa user yang sedang melihat
-    let userId = null;
-    const authHeader = req.headers.authorization;
+    // ✅ PERBAIKAN: Gunakan helper manual, jangan req.user?.id
+    const userId = getUserIdFromToken(req);
 
-    if (authHeader) {
-      try {
-        const token = authHeader.split(" ")[1];
-        if (token && token !== "undefined" && token !== "null") {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          userId = decoded.id;
-        }
-      } catch (e) {
-        console.log("Token error di detail page:", e.message);
-        // Biarkan userId null, artinya user dianggap tamu
-      }
-    }
-    // ----------------------------------------------------
-
-    // VALIDASI
     if (!id || id.trim() === "") {
       return errorResponse(res, "ID resep diperlukan", 400);
     }
 
-    // Kirim userId (bisa null atau ada isinya) ke service
     const recipe = await recipeService.getRecipeById(id, userId);
 
     if (!recipe) {
