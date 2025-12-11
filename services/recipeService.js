@@ -157,10 +157,9 @@ const searchRecipes = async (query) => {
 
 const getRecipeById = async (id, userId = null) => {
   try {
-    const { data: recipe, error } = await supabase
-      .from("recipes")
-      .select(
-        `
+    const { data: recipe, error } = await supabaseAdmin
+      .from('recipes')
+      .select(`
         *,
         users:user_id (id, username, avatar_url, bio, full_name),
         recipe_ingredients (item),
@@ -168,9 +167,8 @@ const getRecipeById = async (id, userId = null) => {
         likes:likes(count),
         comments:comments(count),
         saves:saves(count)
-      `
-      )
-      .eq("id", id)
+      `)
+      .eq('id', id)
       .single();
 
     if (error) throw error;
@@ -178,36 +176,36 @@ const getRecipeById = async (id, userId = null) => {
     // Default status
     let isLiked = false;
     let isSaved = false;
-    let isFollowing = false; // 1. Variabel penampung status follow
+    let isFollowing = false; // [1] Siapkan variabel
 
     if (userId) {
-      // 1. Cek Like
+      // Cek Like
       const { data: likeCheck } = await supabase
-        .from("likes")
-        .select("id")
-        .eq("recipe_id", id)
-        .eq("user_id", userId)
+        .from('likes')
+        .select('id')
+        .eq('recipe_id', id)
+        .eq('user_id', userId)
         .maybeSingle();
       isLiked = !!likeCheck;
 
-      // 2. Cek Save
+      // Cek Save
       const { data: saveCheck } = await supabase
-        .from("saves")
-        .select("id")
-        .eq("recipe_id", id)
-        .eq("user_id", userId)
+        .from('saves')
+        .select('id')
+        .eq('recipe_id', id)
+        .eq('user_id', userId)
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // 3. Cek Follow (INI YANG SERING KETINGGALAN/LUPA DI-SAVE/DEPLOY)
+      // [2] TAMBAHKAN INI (Logika yang hilang di Detail tapi ada di Feed)
       const { data: followCheck } = await supabase
-        .from("follows")
-        .select("id")
-        .eq("follower_id", userId)
-        .eq("following_id", recipe.user_id)
+        .from('follows')
+        .select('id')
+        .eq('follower_id', userId)
+        .eq('following_id', recipe.user_id)
         .maybeSingle();
-
-      isFollowing = !!followCheck;
+        
+      isFollowing = !!followCheck; 
     }
 
     return {
@@ -215,7 +213,7 @@ const getRecipeById = async (id, userId = null) => {
       title: recipe.title,
       description: recipe.description,
       image_url: recipe.image_url,
-      image: recipe.image_url, // fallback
+      image: recipe.image_url,
       total_time: recipe.total_time,
       servings: recipe.servings,
       difficulty: recipe.difficulty,
@@ -223,20 +221,19 @@ const getRecipeById = async (id, userId = null) => {
       author: recipe.users?.username,
       user_fullname: recipe.users?.full_name,
       avatar_url: recipe.users?.avatar_url,
-      avatar: recipe.users?.avatar_url, // fallback
+      avatar: recipe.users?.avatar_url,
       bio: recipe.users?.bio,
-      ingredients: recipe.recipe_ingredients?.map((r) => r.item) || [],
-      steps:
-        recipe.recipe_steps
-          ?.sort((a, b) => a.step_number - b.step_number)
-          .map((r) => r.instruction) || [],
+      ingredients: recipe.recipe_ingredients?.map(r => r.item) || [],
+      steps: recipe.recipe_steps
+        ?.sort((a, b) => a.step_number - b.step_number)
+        .map(r => r.instruction) || [],
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
-
-      // 3. Kirim status ke frontend
+      
+      // [3] Kirim status yang sudah dicek tadi
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing, // ✅ INI WAJIB ADA
+      is_following: isFollowing, 
 
       video_url: recipe.video_url,
       tiktok_url: recipe.tiktok_url,
