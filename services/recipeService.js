@@ -157,6 +157,7 @@ const searchRecipes = async (query) => {
 
 const getRecipeById = async (id, userId = null) => {
   try {
+    console.log(`[DEBUG RECIPE] ID Resep: ${id}, User ID Login: ${userId}`);
     const { data: recipe, error } = await supabaseAdmin
       .from('recipes')
       .select(`
