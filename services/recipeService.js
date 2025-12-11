@@ -153,7 +153,8 @@ const searchRecipes = async (query) => {
   }
 };
 
-// ✅ FUNGSI UTAMA YANG PERLU DIPERBAIKI
+// services/recipeService.js
+
 const getRecipeById = async (id, userId = null) => {
   try {
     const { data: recipe, error } = await supabase
@@ -177,7 +178,7 @@ const getRecipeById = async (id, userId = null) => {
     // Default status
     let isLiked = false;
     let isSaved = false;
-    let isFollowing = false;
+    let isFollowing = false; // ✅ 1. Siapkan variabel ini
 
     if (userId) {
       // 1. Cek Like
@@ -198,22 +199,16 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // 3. Cek Follow (GUNAKAN supabaseAdmin)
-      // Ini memastikan kita bisa membaca tabel follows tanpa diblokir RLS
-      const { data: followCheck } = await supabaseAdmin
+      // ✅ 3. Cek Follow (TAMBAHAN YANG HILANG)
+      // Cek apakah 'userId' (saya) ada hubungan follow dengan 'recipe.user_id' (penulis)
+      const { data: followCheck } = await supabase
         .from("follows")
         .select("id")
         .eq("follower_id", userId)
         .eq("following_id", recipe.user_id)
         .maybeSingle();
 
-      // Jika data ditemukan, berarti sudah follow
-      isFollowing = !!followCheck;
-
-      // Debugging di console server (opsional, untuk memastikan)
-      console.log(
-        `[DEBUG Recipe] User ${userId} viewing recipe by ${recipe.user_id}. Is Following? ${isFollowing}`
-      );
+      isFollowing = !!followCheck; // Kalau ketemu data, berarti true
     }
 
     return {
@@ -239,10 +234,10 @@ const getRecipeById = async (id, userId = null) => {
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
 
-      // Kirim status yang benar ke frontend
+      // ✅ 4. Jangan lupa kembalikan statusnya ke Frontend
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing, // ✅ INI KUNCINYA
+      is_following: isFollowing,
 
       video_url: recipe.video_url,
       tiktok_url: recipe.tiktok_url,
