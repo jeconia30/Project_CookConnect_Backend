@@ -108,4 +108,34 @@ const login = async (loginData) => {
   }
 };
 
-module.exports = { registerUser, login };
+const verifyUserForReset = async (data) => {
+  const { full_name, username, email } = data;
+
+  try {
+    // Cari user yang username DAN email-nya cocok
+    // Kita gunakan ilike untuk full_name agar tidak sensitif huruf besar/kecil
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .select('id, email, username')
+      .eq('email', email)
+      .eq('username', username)
+      .ilike('full_name', full_name) 
+      .maybeSingle(); // Gunakan maybeSingle agar tidak error jika tidak ketemu
+
+    if (error) {
+      throw error;
+    }
+
+    // Jika user kosong (tidak ditemukan)
+    if (!user) {
+      return null; 
+    }
+
+    // Jika ketemu, kembalikan data user
+    return user;
+  } catch (error) {
+    throw error;
+  }
+};
+
+module.exports = { registerUser, login, verifyUserForReset };
