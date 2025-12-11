@@ -161,8 +161,9 @@ const getRecipeById = async (id, userId = null) => {
   try {
     // 1. Ambil Data Resep (Pakai supabaseAdmin)
     const { data: recipe, error } = await supabaseAdmin
-      .from('recipes')
-      .select(`
+      .from("recipes")
+      .select(
+        `
         *,
         users:user_id (id, username, avatar_url, bio, full_name),
         recipe_ingredients (item),
@@ -170,8 +171,9 @@ const getRecipeById = async (id, userId = null) => {
         likes:likes(count),
         comments:comments(count),
         saves:saves(count)
-      `)
-      .eq('id', id)
+      `
+      )
+      .eq("id", id)
       .single();
 
     if (error) throw error;
@@ -185,42 +187,45 @@ const getRecipeById = async (id, userId = null) => {
     console.log(`[DEBUG] ------------------------------------------------`);
     console.log(`[DEBUG] Cek Status untuk UserID: ${userId}`);
     console.log(`[DEBUG] Target (Pemilik Resep): ${recipe.user_id}`);
-    
+
     if (userId) {
       // 1. CEK LIKE
-      const { data: likeCheck } = await supabaseAdmin 
-        .from('likes')
-        .select('id')
-        .eq('recipe_id', id)
-        .eq('user_id', userId)
+      const { data: likeCheck } = await supabaseAdmin
+        .from("likes")
+        .select("id")
+        .eq("recipe_id", id)
+        .eq("user_id", userId)
         .maybeSingle();
       isLiked = !!likeCheck;
 
       // 2. CEK SAVE
-      const { data: saveCheck } = await supabaseAdmin 
-        .from('saves')
-        .select('id')
-        .eq('recipe_id', id)
-        .eq('user_id', userId)
+      const { data: saveCheck } = await supabaseAdmin
+        .from("saves")
+        .select("id")
+        .eq("recipe_id", id)
+        .eq("user_id", userId)
         .maybeSingle();
       isSaved = !!saveCheck;
 
       // 3. CEK FOLLOW (DEBUG KHUSUS)
       // Kita pastikan query-nya benar-benar atomic
-      const { data: followCheck, error: followError } = await supabaseAdmin 
-        .from('follows')
-        .select('*') // Ambil semua field biar yakin
-        .eq('follower_id', userId)
-        .eq('following_id', recipe.user_id)
+      const { data: followCheck, error: followError } = await supabaseAdmin
+        .from("follows")
+        .select("*") // Ambil semua field biar yakin
+        .eq("follower_id", userId)
+        .eq("following_id", recipe.user_id)
         .maybeSingle();
-        
+
       // Cetak hasil query follow ke log
       console.log(`[DEBUG] Hasil Query Follow:`, followCheck);
-      if (followError) console.log(`[DEBUG] Error Query Follow:`, followError.message);
+      if (followError)
+        console.log(`[DEBUG] Error Query Follow:`, followError.message);
 
-      isFollowing = !!followCheck; 
+      isFollowing = !!followCheck;
     }
-    console.log(`[DEBUG] Final Status -> Liked: ${isLiked}, Saved: ${isSaved}, Following: ${isFollowing}`);
+    console.log(
+      `[DEBUG] Final Status -> Liked: ${isLiked}, Saved: ${isSaved}, Following: ${isFollowing}`
+    );
     console.log(`[DEBUG] ------------------------------------------------`);
 
     return {
@@ -239,17 +244,18 @@ const getRecipeById = async (id, userId = null) => {
       avatar: recipe.users?.avatar_url,
       bio: recipe.users?.bio,
       user_id: recipe.user_id, // Penting untuk frontend
-      ingredients: recipe.recipe_ingredients?.map(r => r.item) || [],
-      steps: recipe.recipe_steps
-        ?.sort((a, b) => a.step_number - b.step_number)
-        .map(r => r.instruction) || [],
+      ingredients: recipe.recipe_ingredients?.map((r) => r.item) || [],
+      steps:
+        recipe.recipe_steps
+          ?.sort((a, b) => a.step_number - b.step_number)
+          .map((r) => r.instruction) || [],
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
-      
+
       // Status interaksi
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing, 
+      is_following: isFollowing,
 
       video_url: recipe.video_url,
       tiktok_url: recipe.tiktok_url,
@@ -340,57 +346,53 @@ const createRecipe = async (data) => {
 };
 
 const toggleLike = async (userId, recipeId, shouldLike) => {
-  console.log(`[DEBUG LIKE] Request: User ${userId} -> Recipe ${recipeId} | Action: ${shouldLike ? 'LIKE' : 'UNLIKE'}`);
-  
-  try {
-    // 1. CEK DATA LAMA
-    const { data: existingLike } = await supabaseAdmin
-      .from("likes")
-      .select("id")
-      .eq("recipe_id", recipeId)
-      .eq("user_id", userId)
-      .maybeSingle();
+  console.log(
+    `[DEBUG LIKE] User: ${userId} -> Recipe: ${recipeId} | Target: ${
+      shouldLike ? "LIKE" : "UNLIKE"
+    }`
+  );
 
-    if (shouldLike && !existingLike) {
-      // 2. INSERT
+  try {
+    if (shouldLike) {
+      // --- LOGIKA LIKE (INSERT) ---
       const { error: insertError } = await supabaseAdmin
         .from("likes")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
-      // --- PERBAIKAN DISINI ---
       if (insertError) {
-        // Jika errornya "Duplicate Key" (23505), anggap sukses saja
-        if (insertError.code === '23505') {
-            console.log('[DEBUG LIKE] Info: Data sudah ada (Duplicate), dianggap sukses.');
-            return { status: "liked" };
+        // Abaikan error jika data sudah ada (Duplicate)
+        if (insertError.code === "23505") {
+          console.log("[DEBUG LIKE] Data sudah ada, dianggap sukses.");
+        } else {
+          console.error("[DEBUG LIKE] GAGAL INSERT:", insertError.message);
+          throw insertError;
         }
-        // Jika error lain, baru lempar error beneran
-        console.error('[DEBUG LIKE] GAGAL INSERT:', insertError.message);
-        throw insertError; 
-      } 
-      // ------------------------
-      
-      console.log('[DEBUG LIKE] SUKSES INSERT ke Database!');
+      } else {
+        console.log("[DEBUG LIKE] SUKSES INSERT!");
+      }
 
-      // Notifikasi
+      // Notifikasi (Opsional)
       try {
         const { data: recipe } = await supabaseAdmin
           .from("recipes")
           .select("user_id, title")
           .eq("id", recipeId)
           .single();
-
         if (recipe && recipe.user_id !== userId) {
           await notifService.createNotification(
-            recipe.user_id, userId, "like", `menyukai resep "${recipe.title}"`, recipeId
+            recipe.user_id,
+            userId,
+            "like",
+            `menyukai resep "${recipe.title}"`,
+            recipeId
           );
         }
-      } catch (e) { console.log('Notif error:', e.message); }
+      } catch (e) {}
 
       return { status: "liked" };
-
-    } else if (!shouldLike && existingLike) {
-      // 3. DELETE
+    } else {
+      // --- LOGIKA UNLIKE (DELETE LANGSUNG) ---
+      // Kita HAPUS kondisi pengecekan "existingLike". Langsung eksekusi DELETE.
       const { error: deleteError } = await supabaseAdmin
         .from("likes")
         .delete()
@@ -398,55 +400,47 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
         .eq("user_id", userId);
 
       if (deleteError) {
-        console.error('[DEBUG LIKE] GAGAL DELETE:', deleteError.message);
+        console.error("[DEBUG LIKE] GAGAL DELETE:", deleteError.message);
         throw deleteError;
       }
-      console.log('[DEBUG LIKE] SUKSES DELETE dari Database!');
+      console.log("[DEBUG LIKE] SUKSES DELETE (Tanpa Cek)!");
 
       return { status: "unliked" };
     }
-
-    // Fallback status jika tidak masuk blok manapun
-    return { status: shouldLike ? "liked" : "unliked" };
-
   } catch (error) {
-    console.error('[DEBUG LIKE] CRITICAL ERROR:', error.message);
+    console.error("[DEBUG LIKE] CRITICAL ERROR:", error.message);
     throw error;
   }
 };
 
 const toggleSave = async (userId, recipeId, shouldSave) => {
-  console.log(`[DEBUG SAVE] Request: User ${userId} -> Recipe ${recipeId} | Action: ${shouldSave ? 'SAVE' : 'UNSAVE'}`);
+  console.log(
+    `[DEBUG SAVE] User: ${userId} -> Recipe: ${recipeId} | Target: ${
+      shouldSave ? "SAVE" : "UNSAVE"
+    }`
+  );
 
   try {
-    const { data: existingSave } = await supabaseAdmin
-      .from("saves")
-      .select("id")
-      .eq("recipe_id", recipeId)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (shouldSave && !existingSave) {
+    if (shouldSave) {
+      // --- LOGIKA SAVE (INSERT) ---
       const { error: insertError } = await supabaseAdmin
         .from("saves")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
-      // --- PERBAIKAN DISINI ---
       if (insertError) {
-        // Jika errornya "Duplicate Key", anggap sukses
-        if (insertError.code === '23505') {
-            console.log('[DEBUG SAVE] Info: Data sudah ada (Duplicate), dianggap sukses.');
-            return { status: "saved" };
+        if (insertError.code === "23505") {
+          console.log("[DEBUG SAVE] Data sudah ada, dianggap sukses.");
+        } else {
+          console.error("[DEBUG SAVE] GAGAL INSERT:", insertError.message);
+          throw insertError;
         }
-        console.error('[DEBUG SAVE] GAGAL INSERT:', insertError.message);
-        throw insertError;
+      } else {
+        console.log("[DEBUG SAVE] SUKSES INSERT!");
       }
-      // ------------------------
 
-      console.log('[DEBUG SAVE] SUKSES INSERT!');
       return { status: "saved" };
-
-    } else if (!shouldSave && existingSave) {
+    } else {
+      // --- LOGIKA UNSAVE (DELETE LANGSUNG) ---
       const { error: deleteError } = await supabaseAdmin
         .from("saves")
         .delete()
@@ -454,17 +448,15 @@ const toggleSave = async (userId, recipeId, shouldSave) => {
         .eq("user_id", userId);
 
       if (deleteError) {
-        console.error('[DEBUG SAVE] GAGAL DELETE:', deleteError.message);
+        console.error("[DEBUG SAVE] GAGAL DELETE:", deleteError.message);
         throw deleteError;
       }
-      console.log('[DEBUG SAVE] SUKSES DELETE!');
+      console.log("[DEBUG SAVE] SUKSES DELETE (Tanpa Cek)!");
+
       return { status: "unsaved" };
     }
-
-    return { status: shouldSave ? "saved" : "unsaved" };
-
   } catch (error) {
-    console.error('[DEBUG SAVE] CRITICAL ERROR:', error.message);
+    console.error("[DEBUG SAVE] CRITICAL ERROR:", error.message);
     throw error;
   }
 };
