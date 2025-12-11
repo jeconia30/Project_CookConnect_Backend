@@ -161,9 +161,8 @@ const getRecipeById = async (id, userId = null) => {
   try {
     // 1. Ambil Data Resep (Pakai supabaseAdmin)
     const { data: recipe, error } = await supabaseAdmin
-      .from("recipes")
-      .select(
-        `
+      .from('recipes')
+      .select(`
         *,
         users:user_id (id, username, avatar_url, bio, full_name),
         recipe_ingredients (item),
@@ -171,9 +170,8 @@ const getRecipeById = async (id, userId = null) => {
         likes:likes(count),
         comments:comments(count),
         saves:saves(count)
-      `
-      )
-      .eq("id", id)
+      `)
+      .eq('id', id)
       .single();
 
     if (error) throw error;
@@ -187,45 +185,42 @@ const getRecipeById = async (id, userId = null) => {
     console.log(`[DEBUG] ------------------------------------------------`);
     console.log(`[DEBUG] Cek Status untuk UserID: ${userId}`);
     console.log(`[DEBUG] Target (Pemilik Resep): ${recipe.user_id}`);
-
+    
     if (userId) {
       // 1. CEK LIKE
-      const { data: likeCheck } = await supabaseAdmin
-        .from("likes")
-        .select("id")
-        .eq("recipe_id", id)
-        .eq("user_id", userId)
+      const { data: likeCheck } = await supabaseAdmin 
+        .from('likes')
+        .select('id')
+        .eq('recipe_id', id)
+        .eq('user_id', userId)
         .maybeSingle();
       isLiked = !!likeCheck;
 
       // 2. CEK SAVE
-      const { data: saveCheck } = await supabaseAdmin
-        .from("saves")
-        .select("id")
-        .eq("recipe_id", id)
-        .eq("user_id", userId)
+      const { data: saveCheck } = await supabaseAdmin 
+        .from('saves')
+        .select('id')
+        .eq('recipe_id', id)
+        .eq('user_id', userId)
         .maybeSingle();
       isSaved = !!saveCheck;
 
       // 3. CEK FOLLOW (DEBUG KHUSUS)
       // Kita pastikan query-nya benar-benar atomic
-      const { data: followCheck, error: followError } = await supabaseAdmin
-        .from("follows")
-        .select("*") // Ambil semua field biar yakin
-        .eq("follower_id", userId)
-        .eq("following_id", recipe.user_id)
+      const { data: followCheck, error: followError } = await supabaseAdmin 
+        .from('follows')
+        .select('*') // Ambil semua field biar yakin
+        .eq('follower_id', userId)
+        .eq('following_id', recipe.user_id)
         .maybeSingle();
-
+        
       // Cetak hasil query follow ke log
       console.log(`[DEBUG] Hasil Query Follow:`, followCheck);
-      if (followError)
-        console.log(`[DEBUG] Error Query Follow:`, followError.message);
+      if (followError) console.log(`[DEBUG] Error Query Follow:`, followError.message);
 
-      isFollowing = !!followCheck;
+      isFollowing = !!followCheck; 
     }
-    console.log(
-      `[DEBUG] Final Status -> Liked: ${isLiked}, Saved: ${isSaved}, Following: ${isFollowing}`
-    );
+    console.log(`[DEBUG] Final Status -> Liked: ${isLiked}, Saved: ${isSaved}, Following: ${isFollowing}`);
     console.log(`[DEBUG] ------------------------------------------------`);
 
     return {
@@ -244,18 +239,17 @@ const getRecipeById = async (id, userId = null) => {
       avatar: recipe.users?.avatar_url,
       bio: recipe.users?.bio,
       user_id: recipe.user_id, // Penting untuk frontend
-      ingredients: recipe.recipe_ingredients?.map((r) => r.item) || [],
-      steps:
-        recipe.recipe_steps
-          ?.sort((a, b) => a.step_number - b.step_number)
-          .map((r) => r.instruction) || [],
+      ingredients: recipe.recipe_ingredients?.map(r => r.item) || [],
+      steps: recipe.recipe_steps
+        ?.sort((a, b) => a.step_number - b.step_number)
+        .map(r => r.instruction) || [],
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
-
+      
       // Status interaksi
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing,
+      is_following: isFollowing, 
 
       video_url: recipe.video_url,
       tiktok_url: recipe.tiktok_url,
@@ -346,24 +340,35 @@ const createRecipe = async (data) => {
 };
 
 const toggleLike = async (userId, recipeId, shouldLike) => {
+  console.log(`[DEBUG LIKE] User: ${userId} -> Recipe: ${recipeId} | Action: ${shouldLike ? 'LIKE' : 'UNLIKE'}`);
+  
   try {
-    // 1. GANTI 'supabase' JADI 'supabaseAdmin'
-    const { data: existingLike } = await supabaseAdmin
+    // 1. CEK DATA LAMA (WAJIB PAKAI ADMIN)
+    const { data: existingLike, error: checkError } = await supabaseAdmin
       .from("likes")
       .select("id")
       .eq("recipe_id", recipeId)
       .eq("user_id", userId)
       .maybeSingle();
 
+    if (checkError) console.log('[DEBUG LIKE] Error Check:', checkError.message);
+
     if (shouldLike && !existingLike) {
-      // 2. GANTI 'supabase' JADI 'supabaseAdmin' (Untuk Insert)
-      await supabaseAdmin
+      // 2. INSERT (GANTI SUPABASE -> SUPABASEADMIN)
+      const { error: insertError } = await supabaseAdmin
         .from("likes")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
-      // Bagian notifikasi biarkan saja, atau pastikan logic notifnya aman
+      if (insertError) {
+        console.log('[DEBUG LIKE] GAGAL INSERT:', insertError.message);
+        throw insertError;
+      } else {
+        console.log('[DEBUG LIKE] SUKSES INSERT ke Database!');
+      }
+
+      // Notifikasi (Biarkan try-catch agar tidak memblokir fungsi utama)
       try {
-        const { data: recipe } = await supabaseAdmin // Boleh ganti admin juga biar aman
+        const { data: recipe } = await supabaseAdmin
           .from("recipes")
           .select("user_id, title")
           .eq("id", recipeId)
@@ -371,65 +376,86 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
 
         if (recipe && recipe.user_id !== userId) {
           await notifService.createNotification(
-            recipe.user_id,
-            userId,
-            "like",
-            `menyukai resep "${recipe.title}"`,
-            recipeId
+            recipe.user_id, userId, "like", `menyukai resep "${recipe.title}"`, recipeId
           );
         }
-      } catch (notifError) {
-        console.log("Notifikasi gagal (non-critical):", notifError.message);
-      }
+      } catch (e) { console.log('Notif error:', e.message); }
 
       return { status: "liked" };
+
     } else if (!shouldLike && existingLike) {
-      // 3. GANTI 'supabase' JADI 'supabaseAdmin' (Untuk Delete)
-      await supabaseAdmin
+      // 3. DELETE (GANTI SUPABASE -> SUPABASEADMIN)
+      const { error: deleteError } = await supabaseAdmin
         .from("likes")
         .delete()
         .eq("recipe_id", recipeId)
         .eq("user_id", userId);
+
+      if (deleteError) {
+        console.log('[DEBUG LIKE] GAGAL DELETE:', deleteError.message);
+        throw deleteError;
+      } else {
+        console.log('[DEBUG LIKE] SUKSES DELETE dari Database!');
+      }
 
       return { status: "unliked" };
     }
 
     return { status: existingLike ? "liked" : "unliked" };
   } catch (error) {
+    console.error('[DEBUG LIKE] CRITICAL ERROR:', error);
     throw error;
   }
 };
 
 const toggleSave = async (userId, recipeId, shouldSave) => {
+  console.log(`[DEBUG SAVE] User: ${userId} -> Recipe: ${recipeId} | Action: ${shouldSave ? 'SAVE' : 'UNSAVE'}`);
+
   try {
-    // 1. GANTI 'supabase' JADI 'supabaseAdmin'
-    const { data: existingSave } = await supabaseAdmin
+    // 1. CEK DATA LAMA (PAKAI ADMIN)
+    const { data: existingSave, error: checkError } = await supabaseAdmin
       .from("saves")
       .select("id")
       .eq("recipe_id", recipeId)
       .eq("user_id", userId)
       .maybeSingle();
 
+    if (checkError) console.log('[DEBUG SAVE] Error Check:', checkError.message);
+
     if (shouldSave && !existingSave) {
-      // 2. GANTI 'supabase' JADI 'supabaseAdmin' (Untuk Insert)
-      await supabaseAdmin
+      // 2. INSERT (PAKAI ADMIN)
+      const { error: insertError } = await supabaseAdmin
         .from("saves")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
+      if (insertError) {
+        console.log('[DEBUG SAVE] GAGAL INSERT:', insertError.message);
+        throw insertError;
+      }
+      console.log('[DEBUG SAVE] SUKSES INSERT!');
+
       return { status: "saved" };
+
     } else if (!shouldSave && existingSave) {
-      // 3. GANTI 'supabase' JADI 'supabaseAdmin' (Untuk Delete)
-      await supabaseAdmin
+      // 3. DELETE (PAKAI ADMIN)
+      const { error: deleteError } = await supabaseAdmin
         .from("saves")
         .delete()
         .eq("recipe_id", recipeId)
         .eq("user_id", userId);
+
+      if (deleteError) {
+        console.log('[DEBUG SAVE] GAGAL DELETE:', deleteError.message);
+        throw deleteError;
+      }
+      console.log('[DEBUG SAVE] SUKSES DELETE!');
 
       return { status: "unsaved" };
     }
 
     return { status: existingSave ? "saved" : "unsaved" };
   } catch (error) {
+    console.error('[DEBUG SAVE] CRITICAL ERROR:', error);
     throw error;
   }
 };
