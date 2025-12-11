@@ -265,6 +265,34 @@ const getUserRecipes = async (req, res) => {
   }
 };
 
+const editRecipe = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    // Gunakan body yang sama seperti addRecipe
+    await recipeService.updateRecipe(id, userId, req.body);
+    return successResponse(res, null, "Resep berhasil diupdate");
+  } catch (err) {
+    console.error("Edit Recipe Error:", err);
+    // Cek error permission
+    if(err.message.includes("tidak berhak")) return errorResponse(res, err.message, 403);
+    return errorResponse(res, "Gagal mengupdate resep", 500);
+  }
+};
+
+const removeRecipe = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    await recipeService.deleteRecipe(id, userId);
+    return successResponse(res, null, "Resep berhasil dihapus");
+  } catch (err) {
+    console.error("Delete Recipe Error:", err);
+    if(err.message.includes("tidak berhak")) return errorResponse(res, err.message, 403);
+    return errorResponse(res, "Gagal menghapus resep", 500);
+  }
+};
+
 module.exports = {
   getRecipes,
   searchRecipes,
@@ -275,4 +303,6 @@ module.exports = {
   saveRecipe,
   unsaveRecipe,
   getUserRecipes,
+  editRecipe,
+  removeRecipe,
 };
