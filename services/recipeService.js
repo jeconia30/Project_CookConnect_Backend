@@ -340,7 +340,7 @@ const createRecipe = async (data) => {
 };
 
 const toggleLike = async (userId, recipeId, shouldLike) => {
-  console.log(`[DEBUG LIKE] User: ${userId} -> Recipe: ${recipeId} | Action: ${shouldLike ? 'LIKE' : 'UNLIKE'}`);
+  console.log(`[DEBUG LIKE] Request dari User: ${userId} untuk Resep: ${recipeId} | Action: ${shouldLike ? 'LIKE' : 'UNLIKE'}`);
   
   try {
     // 1. CEK DATA LAMA (WAJIB PAKAI ADMIN)
@@ -359,14 +359,14 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
         .from("likes")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
+      // PENTING: Cek error! Jangan lanjut kalau gagal.
       if (insertError) {
-        console.log('[DEBUG LIKE] GAGAL INSERT:', insertError.message);
-        throw insertError;
-      } else {
-        console.log('[DEBUG LIKE] SUKSES INSERT ke Database!');
-      }
+        console.error('[DEBUG LIKE] GAGAL INSERT:', insertError.message);
+        throw insertError; 
+      } 
+      console.log('[DEBUG LIKE] SUKSES INSERT ke Database!');
 
-      // Notifikasi (Biarkan try-catch agar tidak memblokir fungsi utama)
+      // Notifikasi (Opsional, dibungkus try-catch agar aman)
       try {
         const { data: recipe } = await supabaseAdmin
           .from("recipes")
@@ -392,24 +392,23 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
         .eq("user_id", userId);
 
       if (deleteError) {
-        console.log('[DEBUG LIKE] GAGAL DELETE:', deleteError.message);
+        console.error('[DEBUG LIKE] GAGAL DELETE:', deleteError.message);
         throw deleteError;
-      } else {
-        console.log('[DEBUG LIKE] SUKSES DELETE dari Database!');
       }
+      console.log('[DEBUG LIKE] SUKSES DELETE dari Database!');
 
       return { status: "unliked" };
     }
 
     return { status: existingLike ? "liked" : "unliked" };
   } catch (error) {
-    console.error('[DEBUG LIKE] CRITICAL ERROR:', error);
+    console.error('[DEBUG LIKE] CRITICAL ERROR:', error.message);
     throw error;
   }
 };
 
 const toggleSave = async (userId, recipeId, shouldSave) => {
-  console.log(`[DEBUG SAVE] User: ${userId} -> Recipe: ${recipeId} | Action: ${shouldSave ? 'SAVE' : 'UNSAVE'}`);
+  console.log(`[DEBUG SAVE] Request dari User: ${userId} untuk Resep: ${recipeId} | Action: ${shouldSave ? 'SAVE' : 'UNSAVE'}`);
 
   try {
     // 1. CEK DATA LAMA (PAKAI ADMIN)
@@ -429,7 +428,7 @@ const toggleSave = async (userId, recipeId, shouldSave) => {
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
       if (insertError) {
-        console.log('[DEBUG SAVE] GAGAL INSERT:', insertError.message);
+        console.error('[DEBUG SAVE] GAGAL INSERT:', insertError.message);
         throw insertError;
       }
       console.log('[DEBUG SAVE] SUKSES INSERT!');
@@ -445,7 +444,7 @@ const toggleSave = async (userId, recipeId, shouldSave) => {
         .eq("user_id", userId);
 
       if (deleteError) {
-        console.log('[DEBUG SAVE] GAGAL DELETE:', deleteError.message);
+        console.error('[DEBUG SAVE] GAGAL DELETE:', deleteError.message);
         throw deleteError;
       }
       console.log('[DEBUG SAVE] SUKSES DELETE!');
@@ -455,7 +454,7 @@ const toggleSave = async (userId, recipeId, shouldSave) => {
 
     return { status: existingSave ? "saved" : "unsaved" };
   } catch (error) {
-    console.error('[DEBUG SAVE] CRITICAL ERROR:', error);
+    console.error('[DEBUG SAVE] CRITICAL ERROR:', error.message);
     throw error;
   }
 };
