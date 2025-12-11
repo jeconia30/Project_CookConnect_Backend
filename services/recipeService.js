@@ -340,33 +340,39 @@ const createRecipe = async (data) => {
 };
 
 const toggleLike = async (userId, recipeId, shouldLike) => {
-  console.log(`[DEBUG LIKE] Request dari User: ${userId} untuk Resep: ${recipeId} | Action: ${shouldLike ? 'LIKE' : 'UNLIKE'}`);
+  console.log(`[DEBUG LIKE] Request: User ${userId} -> Recipe ${recipeId} | Action: ${shouldLike ? 'LIKE' : 'UNLIKE'}`);
   
   try {
-    // 1. CEK DATA LAMA (WAJIB PAKAI ADMIN)
-    const { data: existingLike, error: checkError } = await supabaseAdmin
+    // 1. CEK DATA LAMA
+    const { data: existingLike } = await supabaseAdmin
       .from("likes")
       .select("id")
       .eq("recipe_id", recipeId)
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (checkError) console.log('[DEBUG LIKE] Error Check:', checkError.message);
-
     if (shouldLike && !existingLike) {
-      // 2. INSERT (GANTI SUPABASE -> SUPABASEADMIN)
+      // 2. INSERT
       const { error: insertError } = await supabaseAdmin
         .from("likes")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
-      // PENTING: Cek error! Jangan lanjut kalau gagal.
+      // --- PERBAIKAN DISINI ---
       if (insertError) {
+        // Jika errornya "Duplicate Key" (23505), anggap sukses saja
+        if (insertError.code === '23505') {
+            console.log('[DEBUG LIKE] Info: Data sudah ada (Duplicate), dianggap sukses.');
+            return { status: "liked" };
+        }
+        // Jika error lain, baru lempar error beneran
         console.error('[DEBUG LIKE] GAGAL INSERT:', insertError.message);
         throw insertError; 
       } 
+      // ------------------------
+      
       console.log('[DEBUG LIKE] SUKSES INSERT ke Database!');
 
-      // Notifikasi (Opsional, dibungkus try-catch agar aman)
+      // Notifikasi
       try {
         const { data: recipe } = await supabaseAdmin
           .from("recipes")
@@ -384,7 +390,7 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
       return { status: "liked" };
 
     } else if (!shouldLike && existingLike) {
-      // 3. DELETE (GANTI SUPABASE -> SUPABASEADMIN)
+      // 3. DELETE
       const { error: deleteError } = await supabaseAdmin
         .from("likes")
         .delete()
@@ -400,7 +406,9 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
       return { status: "unliked" };
     }
 
-    return { status: existingLike ? "liked" : "unliked" };
+    // Fallback status jika tidak masuk blok manapun
+    return { status: shouldLike ? "liked" : "unliked" };
+
   } catch (error) {
     console.error('[DEBUG LIKE] CRITICAL ERROR:', error.message);
     throw error;
@@ -408,35 +416,37 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
 };
 
 const toggleSave = async (userId, recipeId, shouldSave) => {
-  console.log(`[DEBUG SAVE] Request dari User: ${userId} untuk Resep: ${recipeId} | Action: ${shouldSave ? 'SAVE' : 'UNSAVE'}`);
+  console.log(`[DEBUG SAVE] Request: User ${userId} -> Recipe ${recipeId} | Action: ${shouldSave ? 'SAVE' : 'UNSAVE'}`);
 
   try {
-    // 1. CEK DATA LAMA (PAKAI ADMIN)
-    const { data: existingSave, error: checkError } = await supabaseAdmin
+    const { data: existingSave } = await supabaseAdmin
       .from("saves")
       .select("id")
       .eq("recipe_id", recipeId)
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (checkError) console.log('[DEBUG SAVE] Error Check:', checkError.message);
-
     if (shouldSave && !existingSave) {
-      // 2. INSERT (PAKAI ADMIN)
       const { error: insertError } = await supabaseAdmin
         .from("saves")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
+      // --- PERBAIKAN DISINI ---
       if (insertError) {
+        // Jika errornya "Duplicate Key", anggap sukses
+        if (insertError.code === '23505') {
+            console.log('[DEBUG SAVE] Info: Data sudah ada (Duplicate), dianggap sukses.');
+            return { status: "saved" };
+        }
         console.error('[DEBUG SAVE] GAGAL INSERT:', insertError.message);
         throw insertError;
       }
-      console.log('[DEBUG SAVE] SUKSES INSERT!');
+      // ------------------------
 
+      console.log('[DEBUG SAVE] SUKSES INSERT!');
       return { status: "saved" };
 
     } else if (!shouldSave && existingSave) {
-      // 3. DELETE (PAKAI ADMIN)
       const { error: deleteError } = await supabaseAdmin
         .from("saves")
         .delete()
@@ -448,11 +458,11 @@ const toggleSave = async (userId, recipeId, shouldSave) => {
         throw deleteError;
       }
       console.log('[DEBUG SAVE] SUKSES DELETE!');
-
       return { status: "unsaved" };
     }
 
-    return { status: existingSave ? "saved" : "unsaved" };
+    return { status: shouldSave ? "saved" : "unsaved" };
+
   } catch (error) {
     console.error('[DEBUG SAVE] CRITICAL ERROR:', error.message);
     throw error;
