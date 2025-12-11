@@ -93,4 +93,33 @@ const login = async (req, res) => {
   }
 };
 
-module.exports = { register, login };
+const verifyUser = async (req, res) => {
+  try {
+    const { full_name, username, email } = req.body;
+
+    // Validasi sederhana
+    if (!full_name || !username || !email) {
+      return errorResponse(res, "Semua kolom harus diisi!", 400);
+    }
+
+    // Panggil Service
+    const user = await authService.verifyUserForReset({
+      full_name,
+      username,
+      email
+    });
+
+    if (!user) {
+      // Jika data tidak cocok
+      return errorResponse(res, "Data tidak ditemukan. Pastikan Nama, Username, dan Email sesuai.", 404);
+    }
+
+    // Jika cocok
+    return successResponse(res, { valid: true, email: user.email }, "Identitas terverifikasi.");
+  } catch (error) {
+    console.error("Verify User Error:", error);
+    return errorResponse(res, "Terjadi kesalahan server.", 500);
+  }
+};
+
+module.exports = { register, login, verifyUser };
