@@ -155,9 +155,11 @@ const searchRecipes = async (query) => {
 
 // services/recipeService.js
 
+// services/recipeService.js
+
 const getRecipeById = async (id, userId = null) => {
   try {
-    console.log(`[DEBUG RECIPE] ID Resep: ${id}, User ID Login: ${userId}`);
+    // 1. Ambil Data Resep (Pakai supabaseAdmin)
     const { data: recipe, error } = await supabaseAdmin
       .from('recipes')
       .select(`
@@ -177,11 +179,16 @@ const getRecipeById = async (id, userId = null) => {
     // Default status
     let isLiked = false;
     let isSaved = false;
-    let isFollowing = false; // [1] Siapkan variabel
+    let isFollowing = false;
 
+    // --- DEBUG LOGGING ---
+    console.log(`[DEBUG] ------------------------------------------------`);
+    console.log(`[DEBUG] Cek Status untuk UserID: ${userId}`);
+    console.log(`[DEBUG] Target (Pemilik Resep): ${recipe.user_id}`);
+    
     if (userId) {
-      // Cek Like
-      const { data: likeCheck } = await supabaseAdmin
+      // 1. CEK LIKE
+      const { data: likeCheck } = await supabaseAdmin 
         .from('likes')
         .select('id')
         .eq('recipe_id', id)
@@ -189,8 +196,8 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isLiked = !!likeCheck;
 
-      // Cek Save
-      const { data: saveCheck } = await supabaseAdmin
+      // 2. CEK SAVE
+      const { data: saveCheck } = await supabaseAdmin 
         .from('saves')
         .select('id')
         .eq('recipe_id', id)
@@ -198,23 +205,30 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // [2] TAMBAHKAN INI (Logika yang hilang di Detail tapi ada di Feed)
-      const { data: followCheck } = await supabaseAdmin
+      // 3. CEK FOLLOW (DEBUG KHUSUS)
+      // Kita pastikan query-nya benar-benar atomic
+      const { data: followCheck, error: followError } = await supabaseAdmin 
         .from('follows')
-        .select('id')
+        .select('*') // Ambil semua field biar yakin
         .eq('follower_id', userId)
         .eq('following_id', recipe.user_id)
         .maybeSingle();
         
+      // Cetak hasil query follow ke log
+      console.log(`[DEBUG] Hasil Query Follow:`, followCheck);
+      if (followError) console.log(`[DEBUG] Error Query Follow:`, followError.message);
+
       isFollowing = !!followCheck; 
     }
+    console.log(`[DEBUG] Final Status -> Liked: ${isLiked}, Saved: ${isSaved}, Following: ${isFollowing}`);
+    console.log(`[DEBUG] ------------------------------------------------`);
 
     return {
       id: recipe.id,
       title: recipe.title,
       description: recipe.description,
       image_url: recipe.image_url,
-      image: recipe.image_url,
+      image: recipe.image_url, // jaga-jaga frontend pakai key ini
       total_time: recipe.total_time,
       servings: recipe.servings,
       difficulty: recipe.difficulty,
@@ -224,6 +238,7 @@ const getRecipeById = async (id, userId = null) => {
       avatar_url: recipe.users?.avatar_url,
       avatar: recipe.users?.avatar_url,
       bio: recipe.users?.bio,
+      user_id: recipe.user_id, // Penting untuk frontend
       ingredients: recipe.recipe_ingredients?.map(r => r.item) || [],
       steps: recipe.recipe_steps
         ?.sort((a, b) => a.step_number - b.step_number)
@@ -231,7 +246,7 @@ const getRecipeById = async (id, userId = null) => {
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
       
-      // [3] Kirim status yang sudah dicek tadi
+      // Status interaksi
       is_liked: isLiked,
       is_saved: isSaved,
       is_following: isFollowing, 
