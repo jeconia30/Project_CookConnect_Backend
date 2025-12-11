@@ -178,10 +178,10 @@ const getRecipeById = async (id, userId = null) => {
     // Default status
     let isLiked = false;
     let isSaved = false;
-    let isFollowing = false; // ✅ 1. Siapkan variabel ini
+    let isFollowing = false; // 1. Variabel penampung status follow
 
     if (userId) {
-      // 1. Cek Like
+      // Cek Like
       const { data: likeCheck } = await supabase
         .from("likes")
         .select("id")
@@ -190,7 +190,7 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isLiked = !!likeCheck;
 
-      // 2. Cek Save
+      // Cek Save
       const { data: saveCheck } = await supabase
         .from("saves")
         .select("id")
@@ -199,8 +199,8 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // ✅ 3. Cek Follow (TAMBAHAN YANG HILANG)
-      // Cek apakah 'userId' (saya) ada hubungan follow dengan 'recipe.user_id' (penulis)
+      // 2. LOGIKA YANG SEBELUMNYA HILANG (Cek Follow)
+      // Kita cek apakah 'userId' (saya) mem-follow 'recipe.user_id' (pembuat resep)
       const { data: followCheck } = await supabase
         .from("follows")
         .select("id")
@@ -208,7 +208,8 @@ const getRecipeById = async (id, userId = null) => {
         .eq("following_id", recipe.user_id)
         .maybeSingle();
 
-      isFollowing = !!followCheck; // Kalau ketemu data, berarti true
+      // Jika data ditemukan, set status jadi true
+      isFollowing = !!followCheck;
     }
 
     return {
@@ -216,7 +217,7 @@ const getRecipeById = async (id, userId = null) => {
       title: recipe.title,
       description: recipe.description,
       image_url: recipe.image_url,
-      image: recipe.image_url,
+      image: recipe.image_url, // fallback
       total_time: recipe.total_time,
       servings: recipe.servings,
       difficulty: recipe.difficulty,
@@ -224,7 +225,7 @@ const getRecipeById = async (id, userId = null) => {
       author: recipe.users?.username,
       user_fullname: recipe.users?.full_name,
       avatar_url: recipe.users?.avatar_url,
-      avatar: recipe.users?.avatar_url,
+      avatar: recipe.users?.avatar_url, // fallback
       bio: recipe.users?.bio,
       ingredients: recipe.recipe_ingredients?.map((r) => r.item) || [],
       steps:
@@ -234,10 +235,10 @@ const getRecipeById = async (id, userId = null) => {
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
 
-      // ✅ 4. Jangan lupa kembalikan statusnya ke Frontend
+      // 3. Kirim status ke frontend
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing,
+      is_following: isFollowing, // ✅ INI WAJIB ADA
 
       video_url: recipe.video_url,
       tiktok_url: recipe.tiktok_url,
