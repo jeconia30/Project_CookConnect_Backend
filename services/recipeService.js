@@ -181,7 +181,7 @@ const getRecipeById = async (id, userId = null) => {
     let isFollowing = false; // 1. Variabel penampung status follow
 
     if (userId) {
-      // Cek Like
+      // 1. Cek Like
       const { data: likeCheck } = await supabase
         .from("likes")
         .select("id")
@@ -190,7 +190,7 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isLiked = !!likeCheck;
 
-      // Cek Save
+      // 2. Cek Save
       const { data: saveCheck } = await supabase
         .from("saves")
         .select("id")
@@ -199,8 +199,7 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // 2. LOGIKA YANG SEBELUMNYA HILANG (Cek Follow)
-      // Kita cek apakah 'userId' (saya) mem-follow 'recipe.user_id' (pembuat resep)
+      // 3. Cek Follow (INI YANG SERING KETINGGALAN/LUPA DI-SAVE/DEPLOY)
       const { data: followCheck } = await supabase
         .from("follows")
         .select("id")
@@ -208,7 +207,6 @@ const getRecipeById = async (id, userId = null) => {
         .eq("following_id", recipe.user_id)
         .maybeSingle();
 
-      // Jika data ditemukan, set status jadi true
       isFollowing = !!followCheck;
     }
 
