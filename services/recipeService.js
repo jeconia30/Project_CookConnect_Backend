@@ -180,7 +180,7 @@ const getRecipeById = async (id, userId = null) => {
 
     if (userId) {
       // Cek Like
-      const { data: likeCheck } = await supabase
+      const { data: likeCheck } = await supabaseAdmin
         .from('likes')
         .select('id')
         .eq('recipe_id', id)
@@ -189,7 +189,7 @@ const getRecipeById = async (id, userId = null) => {
       isLiked = !!likeCheck;
 
       // Cek Save
-      const { data: saveCheck } = await supabase
+      const { data: saveCheck } = await supabaseAdmin
         .from('saves')
         .select('id')
         .eq('recipe_id', id)
@@ -198,7 +198,7 @@ const getRecipeById = async (id, userId = null) => {
       isSaved = !!saveCheck;
 
       // [2] TAMBAHKAN INI (Logika yang hilang di Detail tapi ada di Feed)
-      const { data: followCheck } = await supabase
+      const { data: followCheck } = await supabaseAdmin
         .from('follows')
         .select('id')
         .eq('follower_id', userId)
