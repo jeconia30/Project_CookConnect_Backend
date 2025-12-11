@@ -37,3 +37,4 @@ router.put('/:id', authMiddleware, recipeController.editRecipe);
 router.delete('/:id', authMiddleware, recipeController.removeRecipe);
 
 module.exports = router;
+ 
