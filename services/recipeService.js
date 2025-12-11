@@ -492,6 +492,76 @@ const getRecipesByUserId = async (userId) => {
   }
 };
 
+const updateRecipe = async (recipeId, userId, data) => {
+  try {
+    // 1. Cek Kepemilikan (Ownership)
+    const { data: existing } = await supabase
+      .from('recipes')
+      .select('user_id')
+      .eq('id', recipeId)
+      .single();
+
+    if (!existing) throw new Error("Resep tidak ditemukan");
+    if (existing.user_id !== userId) throw new Error("Anda tidak berhak mengedit resep ini");
+
+    // 2. Update Data Utama
+    const { title, description, image_url, total_time, servings, difficulty, video_url, tiktok_url, instagram_url } = data;
+    
+    const { error: updateError } = await supabase
+      .from('recipes')
+      .update({ 
+         title, description, image_url, 
+         total_time: parseInt(total_time) || 0, 
+         servings: parseInt(servings) || 0, 
+         difficulty, video_url, tiktok_url, instagram_url 
+      })
+      .eq('id', recipeId);
+
+    if (updateError) throw updateError;
+
+    // 3. Update Ingredients (Hapus lama, Insert baru)
+    if (data.ingredients) {
+        await supabase.from('recipe_ingredients').delete().eq('recipe_id', recipeId);
+        const ingMap = data.ingredients.map(item => ({ recipe_id: recipeId, item: item.trim() }));
+        if(ingMap.length > 0) await supabase.from('recipe_ingredients').insert(ingMap);
+    }
+
+    // 4. Update Steps (Hapus lama, Insert baru)
+    if (data.steps) {
+        await supabase.from('recipe_steps').delete().eq('recipe_id', recipeId);
+        const stepMap = data.steps.map((step, idx) => ({ recipe_id: recipeId, step_number: idx + 1, instruction: step.trim() }));
+        if(stepMap.length > 0) await supabase.from('recipe_steps').insert(stepMap);
+    }
+
+    return { message: "Resep berhasil diperbarui" };
+  } catch (error) {
+    throw error;
+  }
+};
+
+const deleteRecipe = async (recipeId, userId) => {
+   try {
+     // 1. Cek Kepemilikan
+     const { data: existing } = await supabase
+       .from('recipes')
+       .select('user_id')
+       .eq('id', recipeId)
+       .single();
+
+     if (!existing) throw new Error("Resep tidak ditemukan");
+     if (existing.user_id !== userId) throw new Error("Anda tidak berhak menghapus resep ini");
+
+     // 2. Hapus (Supabase biasanya otomatis hapus child (bahan/langkah) jika settingan DB Cascade Delete aktif)
+     // Jika tidak cascade, hapus child manual dulu seperti di updateRecipe
+     const { error } = await supabase.from('recipes').delete().eq('id', recipeId);
+     
+     if (error) throw error;
+     return { message: "Resep berhasil dihapus" };
+   } catch (error) {
+     throw error;
+   }
+};
+
 module.exports = {
   getAllRecipes,
   searchRecipes,
@@ -500,4 +570,6 @@ module.exports = {
   toggleLike,
   toggleSave,
   getRecipesByUserId,
+  updateRecipe,
+  deleteRecipe,
 };

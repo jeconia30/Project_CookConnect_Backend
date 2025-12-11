@@ -30,4 +30,11 @@ router.post('/:id/unsave', authMiddleware, recipeController.unsaveRecipe);
 // GET /api/recipes/user/:userId -> Ambil resep user tertentu
 router.get('/user/:userId', recipeController.getUserRecipes);
 
+// PUT /api/recipes/:id -> Edit Resep (HARUS LOGIN)
+router.put('/:id', authMiddleware, recipeController.editRecipe);
+
+// DELETE /api/recipes/:id -> Hapus Resep (HARUS LOGIN)
+router.delete('/:id', authMiddleware, recipeController.removeRecipe);
+
 module.exports = router;
+ 
