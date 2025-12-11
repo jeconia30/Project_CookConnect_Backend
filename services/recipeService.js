@@ -1,4 +1,4 @@
-const { supabase, supabaseAdmin } = require("../config/supabaseClient");
+const { supabase, supabaseAdmin } = require("../config/supabaseClient"); // ✅ PASTIKAN ADA supabaseAdmin
 const notifService = require("./notificationService");
 
 // Ambil semua resep dengan filter dan sort
@@ -37,7 +37,7 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
     // --- CEK STATUS USER (Like, Save, Follow) ---
     let likedRecipeIds = [];
     let savedRecipeIds = [];
-    let followedUserIds = []; // Array untuk ID user yang diikuti
+    let followedUserIds = [];
 
     if (userId) {
       // 1. Cek Like
@@ -54,14 +54,13 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
         .eq("user_id", userId);
       if (userSaves) savedRecipeIds = userSaves.map((i) => i.recipe_id);
 
-      // 3. Cek Follow (Siapa saja yang diikuti oleh user ini?)
-      const { data: userFollows } = await supabase
+      // 3. Cek Follow (Gunakan supabaseAdmin agar aman dari RLS)
+      const { data: userFollows } = await supabaseAdmin
         .from("follows")
         .select("following_id")
         .eq("follower_id", userId);
       if (userFollows) followedUserIds = userFollows.map((f) => f.following_id);
     }
-    // ---------------------------------------------
 
     let formattedData = (data || []).map((recipe) => {
       const likes = recipe.likes?.[0]?.count || 0;
@@ -76,11 +75,8 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
         servings: recipe.servings,
         difficulty: recipe.difficulty,
         created_at: recipe.created_at,
-
-        // ✅ PERBAIKAN 1: Tampilkan Nama Lengkap, bukan username lagi
         author: recipe.users?.full_name || recipe.users?.username || "Pengguna",
         handle: recipe.users?.username || "user",
-
         user_id: recipe.user_id,
         avatar_url: recipe.users?.avatar_url,
         avatar: recipe.users?.avatar_url,
@@ -94,11 +90,8 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
         comment_count: recipe.comments?.[0]?.count || 0,
         comments: recipe.comments?.[0]?.count || 0,
         saves: recipe.saves?.[0]?.count || 0,
-
-        // Status Interaksi
         is_liked: likedRecipeIds.includes(recipe.id),
         is_saved: savedRecipeIds.includes(recipe.id),
-        // ✅ PERBAIKAN 2: Cek apakah user pembuat resep ini ada di daftar following
         is_following: followedUserIds.includes(recipe.user_id),
       };
     });
@@ -113,7 +106,6 @@ const getAllRecipes = async (queryParam = {}, userId = null) => {
   }
 };
 
-// Search resep
 const searchRecipes = async (query) => {
   try {
     const { data, error } = await supabase
@@ -161,10 +153,9 @@ const searchRecipes = async (query) => {
   }
 };
 
-// Ambil detail resep
+// ✅ FUNGSI UTAMA YANG PERLU DIPERBAIKI
 const getRecipeById = async (id, userId = null) => {
   try {
-    // Ambil data resep (pakai supabase biasa boleh, atau admin juga boleh)
     const { data: recipe, error } = await supabase
       .from("recipes")
       .select(
@@ -190,7 +181,7 @@ const getRecipeById = async (id, userId = null) => {
 
     if (userId) {
       // 1. Cek Like
-      const { data: likeCheck } = await supabaseAdmin // Gunakan supabaseAdmin biar aman
+      const { data: likeCheck } = await supabase
         .from("likes")
         .select("id")
         .eq("recipe_id", id)
@@ -199,7 +190,7 @@ const getRecipeById = async (id, userId = null) => {
       isLiked = !!likeCheck;
 
       // 2. Cek Save
-      const { data: saveCheck } = await supabaseAdmin // Gunakan supabaseAdmin
+      const { data: saveCheck } = await supabase
         .from("saves")
         .select("id")
         .eq("recipe_id", id)
@@ -207,8 +198,8 @@ const getRecipeById = async (id, userId = null) => {
         .maybeSingle();
       isSaved = !!saveCheck;
 
-      // 3. Cek Follow (INI BAGIAN YANG BUG)
-      // Gunakan supabaseAdmin untuk memastikan kita bisa baca tabel follows
+      // 3. Cek Follow (GUNAKAN supabaseAdmin)
+      // Ini memastikan kita bisa membaca tabel follows tanpa diblokir RLS
       const { data: followCheck } = await supabaseAdmin
         .from("follows")
         .select("id")
@@ -216,8 +207,15 @@ const getRecipeById = async (id, userId = null) => {
         .eq("following_id", recipe.user_id)
         .maybeSingle();
 
+      // Jika data ditemukan, berarti sudah follow
       isFollowing = !!followCheck;
+
+      // Debugging di console server (opsional, untuk memastikan)
+      console.log(
+        `[DEBUG Recipe] User ${userId} viewing recipe by ${recipe.user_id}. Is Following? ${isFollowing}`
+      );
     }
+
     return {
       id: recipe.id,
       title: recipe.title,
@@ -241,12 +239,11 @@ const getRecipeById = async (id, userId = null) => {
       like_count: recipe.likes?.[0]?.count || 0,
       comment_count: recipe.comments?.[0]?.count || 0,
 
-      // ✅ STATUS YANG DIPERBAIKI
+      // Kirim status yang benar ke frontend
       is_liked: isLiked,
       is_saved: isSaved,
-      is_following: isFollowing,
+      is_following: isFollowing, // ✅ INI KUNCINYA
 
-      // ✅ LINK SOSMED (Dari perbaikan sebelumnya)
       video_url: recipe.video_url,
       tiktok_url: recipe.tiktok_url,
       instagram_url: recipe.instagram_url,
@@ -256,7 +253,6 @@ const getRecipeById = async (id, userId = null) => {
   }
 };
 
-// Buat resep baru
 const createRecipe = async (data) => {
   const {
     user_id,
@@ -274,7 +270,6 @@ const createRecipe = async (data) => {
   } = data;
 
   try {
-    // 1. Insert recipe utama
     const { data: newRecipe, error: recipeError } = await supabase
       .from("recipes")
       .insert([
@@ -286,7 +281,6 @@ const createRecipe = async (data) => {
           total_time: parseInt(total_time) || 0,
           servings: parseInt(servings) || 0,
           difficulty,
-          // ✅ PERBAIKAN: Masukkan ke database
           video_url,
           tiktok_url,
           instagram_url,
@@ -297,7 +291,6 @@ const createRecipe = async (data) => {
 
     if (recipeError) throw recipeError;
 
-    // 2. Insert ingredients
     if (ingredients && Array.isArray(ingredients) && ingredients.length > 0) {
       const ingredientRecords = ingredients
         .filter((item) => item && item.trim())
@@ -315,7 +308,6 @@ const createRecipe = async (data) => {
       }
     }
 
-    // 3. Insert steps
     if (steps && Array.isArray(steps) && steps.length > 0) {
       const stepRecords = steps
         .filter((step) => step && step.trim())
@@ -340,10 +332,8 @@ const createRecipe = async (data) => {
   }
 };
 
-// Toggle Like
 const toggleLike = async (userId, recipeId, shouldLike) => {
   try {
-    // Cek apakah sudah like
     const { data: existingLike } = await supabase
       .from("likes")
       .select("id")
@@ -352,12 +342,10 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
       .maybeSingle();
 
     if (shouldLike && !existingLike) {
-      // Tambah like
       await supabase
         .from("likes")
         .insert([{ recipe_id: recipeId, user_id: userId }]);
 
-      // Buat notifikasi
       try {
         const { data: recipe } = await supabase
           .from("recipes")
@@ -380,7 +368,6 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
 
       return { status: "liked" };
     } else if (!shouldLike && existingLike) {
-      // Hapus like
       await supabase
         .from("likes")
         .delete()
@@ -396,7 +383,6 @@ const toggleLike = async (userId, recipeId, shouldLike) => {
   }
 };
 
-// Toggle Save
 const toggleSave = async (userId, recipeId, shouldSave) => {
   try {
     const { data: existingSave } = await supabase
@@ -428,7 +414,6 @@ const toggleSave = async (userId, recipeId, shouldSave) => {
   }
 };
 
-// Ambil resep user tertentu
 const getRecipesByUserId = async (userId) => {
   try {
     const { data: recipes, error } = await supabase
